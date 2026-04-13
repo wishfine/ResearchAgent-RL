@@ -1,0 +1,104 @@
+# ResearchAgent-RL
+
+# Core Architecture
+
+## System Overview
+ResearchAgent-RL 将科研任务求解建模为有限步长的、document-grounded 的 tool-use MDP。
+Agent 通过 SEARCH → READ → RERANK → CITE → ANSWER 动作序列完成推理感知检索、证据积累和引用归因回答。
+
+## Tech Stack
+- **Base Model**: Qwen series (MVP: small-scale)
+- **SFT**: Hugging Face Transformers + PEFT (LoRA)
+- **RL**: veRL + Ray + vLLM
+- **Retrieval**: Local chunk library + BM25/embedding
+- **Reranker**: Simple first, upgrade later
+
+## Training Stages
+1. **Stage 0**: Environment + Mock Tools (validate MDP)
+2. **Stage 1**: Rule-based Baseline (generate trajectories)
+3. **Stage 2**: SFT Warm Start (Transformers + PEFT)
+4. **Stage 3**: RL Post-training (veRL + Ray + vLLM)
+5. **Stage 4**: Evaluation + Ablation
+
+# Project Structure
+
+```
+ResearchAgent-RL/
+├── data/
+│   ├── schemas.py          # Core dataclasses
+│   └── __init__.py
+├── env/
+│   ├── environment.py       # MDP environment
+│   └── __init__.py
+├── tools/
+│   ├── base.py             # Tool registry & implementations
+│   └── __init__.py
+├── policy/
+│   ├── policy.py           # Policy interfaces (Random, RuleBased, LLM)
+│   └── __init__.py
+├── reward/
+│   └── __init__.py         # Reward computation (placeholder)
+├── eval/
+│   ├── evaluator.py        # Two-layer evaluation
+│   └── __init__.py
+├── scripts/
+│   └── run_mvp.py          # MVP runner
+└── configs/
+    └── default.yaml        # Configurations
+```
+
+# Core Schemas
+
+## Observation
+- task_id, task_type, user_query
+- current_subgoal, current_evidence_gap
+- candidate_chunks, read_summaries, cited_chunks
+- search_history, failed_searches
+- trajectory, last_tool_result
+- remaining_steps, invalid/repeated/no_progress counts
+- final_answer
+
+## Action (tool-use format)
+```python
+{
+  "tool": "SEARCH|READ|RERANK|CITE|ANSWER",
+  "intent": str,
+  "params": {...},
+  "reasoning": Optional[str]
+}
+```
+
+## Reward
+- R_total = 1.0 * R_final + 0.3 * R_citation + 0.1 * R_step_sum
+- R_final: answer quality (keyword/section/overlap)
+- R_citation: 0.5*recall + 0.5*precision
+- R_step_sum: evidence gain, efficiency, penalties
+
+## Done Conditions
+1. ANSWER executed
+2. remaining_steps <= 0
+3. invalid_action_count >= 3
+4. no_progress_count >= 5
+
+# Training Data
+
+## Task Dataset (45 total)
+- dev: 15, test: 15, case_study_pool: 15
+
+## Trajectory Dataset
+- 300~1000 SFT warm-start trajectories
+- From rule-based + teacher + synthetic tasks
+
+# Evaluation
+
+## Outcome Metrics
+- task_success_rate, mean_answer_quality, mean_rubric_completion
+- mean_citation_recall, mean_citation_precision
+
+## Process Metrics
+- mean_steps, mean_search_count, mean_read_count
+- invalid/repeated query/read rates, no_progress_termination_rate
+
+# MVP Verification
+Run: `python scripts/run_mvp.py`
+Expected: Environment validates, rule-based baseline runs, evaluation produces metrics
