@@ -105,9 +105,24 @@ def load_task(filepath: str) -> TaskSample:
     )
 
 
+def normalize_answer(s: str) -> str:
+    import re
+    import string
+    def remove_articles(text):
+        return re.sub(r'\b(a|an|the)\b', ' ', text)
+    def white_space_fix(text):
+        return ' '.join(text.split())
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return ''.join(ch for ch in text if ch not in exclude)
+    def lower(text):
+        return text.lower()
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+
 def compute_token_f1(prediction: str, ground_truth: str) -> float:
-    pred_tokens = prediction.lower().strip().split()
-    gt_tokens = ground_truth.lower().strip().split()
+    pred_tokens = normalize_answer(prediction).split()
+    gt_tokens = normalize_answer(ground_truth).split()
     
     if not pred_tokens or not gt_tokens:
         return 1.0 if pred_tokens == gt_tokens else 0.0
@@ -123,11 +138,14 @@ def compute_token_f1(prediction: str, ground_truth: str) -> float:
 
 
 def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list[str], gt_citations: list[str]):
-    ans_clean = final_answer.lower().strip() if final_answer else ""
-    gt_clean = ground_truth_answer.lower().strip() if ground_truth_answer else ""
+    ans_clean = normalize_answer(final_answer) if final_answer else ""
+    gt_clean = normalize_answer(ground_truth_answer) if ground_truth_answer else ""
     
-    # Exact Match (EM): Check if ground truth answer string is contained in final answer
-    em = 1.0 if gt_clean in ans_clean else 0.0
+    # Strict standardized exact match (EM)
+    exact_match = 1.0 if ans_clean == gt_clean else 0.0
+    
+    # Substring contains match
+    contains = 1.0 if gt_clean in ans_clean else 0.0
     
     # Token F1
     token_f1 = compute_token_f1(final_answer, ground_truth_answer)
@@ -142,7 +160,8 @@ def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list
     citation_f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
     return {
-        "em": em,
+        "exact_match": exact_match,
+        "contains": contains,
         "token_f1": token_f1,
         "citation_precision": precision,
         "citation_recall": recall,
@@ -205,7 +224,7 @@ def main():
         )
 
         print(f"  Done reason: {episode_result.done_reason}")
-        print(f"  Metrics: EM={metrics['em']:.2f}, Token F1={metrics['token_f1']:.2f}, Citation Prec={metrics['citation_precision']:.2f}, Citation Rec={metrics['citation_recall']:.2f}, Citation F1={metrics['citation_f1']:.2f}")
+        print(f"  Metrics: EM={metrics['exact_match']:.2f}, Contains={metrics['contains']:.2f}, Token F1={metrics['token_f1']:.2f}, Citation Prec={metrics['citation_precision']:.2f}, Citation Rec={metrics['citation_recall']:.2f}, Citation F1={metrics['citation_f1']:.2f}")
 
         # Save trajectory
         task_output_path = os.path.join(output_dir, f"{task.task_id}_trajectory.json")
@@ -220,13 +239,15 @@ def main():
         results.append((task.task_id, metrics, episode_result))
 
     # 6. Aggregate results
-    avg_em = sum(r[1]["em"] for r in results) / len(results)
+    avg_em = sum(r[1]["exact_match"] for r in results) / len(results)
+    avg_contains = sum(r[1]["contains"] for r in results) / len(results)
     avg_token_f1 = sum(r[1]["token_f1"] for r in results) / len(results)
     avg_cit_f1 = sum(r[1]["citation_f1"] for r in results) / len(results)
     
     print("\n" + "=" * 60)
     print("Smoke test complete! Metric Averages:")
-    print(f"  Average Answer EM: {avg_em:.2f}")
+    print(f"  Average Answer EM (Strict): {avg_em:.2f}")
+    print(f"  Average Answer Contains: {avg_contains:.2f}")
     print(f"  Average Answer Token F1: {avg_token_f1:.2f}")
     print(f"  Average Citation F1: {avg_cit_f1:.2f}")
     print("=" * 60)

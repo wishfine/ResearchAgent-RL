@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
+# NOTE: "INVALID" is an internal parser/env sentinel used for error handling and flow control.
+# It is NOT a learnable tool action for model post-training (SFT/RL should not learn to emit it).
 VALID_TOOLS = {"SEARCH", "READ", "ANSWER"}
 
 @dataclass

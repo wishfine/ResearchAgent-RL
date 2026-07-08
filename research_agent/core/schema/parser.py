@@ -50,6 +50,7 @@ class ActionParser:
             intent = data.get("intent", f"Execute {tool}")
             
             if not tool:
+                # INVALID is an internal sentinel and error label, not a learnable tool action
                 return Action(
                     tool="INVALID",
                     intent="Action missing 'tool' field",
@@ -112,6 +113,7 @@ class ActionParser:
                     reasoning=reasoning
                 )
 
+            # INVALID is an internal sentinel and error label, not a learnable tool action
             return Action(
                 tool="INVALID",
                 intent=f"Failed to parse action JSON: {e}",
