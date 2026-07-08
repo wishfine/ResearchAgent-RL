@@ -101,21 +101,15 @@ async def custom_rm(args: Any, sample: Any) -> float:
     # 3. Compute accuracy and citation metrics
     metrics = compute_metrics(final_answer, ground_truth_answer, cited_ids, ground_truth_citations)
 
-    # 4. Calculate total reward score
-    # Load parameters from args or use sensible defaults
-    reward_type = getattr(args, "reward_type", "token_f1")
-    base_reward = metrics.get(reward_type, metrics.get("token_f1", 0.0))
+    # 4. Calculate total reward score using user recommended formula:
+    # reward = 1.0 * contains + 0.5 * token_f1 + 0.5 * citation_f1 - 0.05 * invalid_actions - 0.01 * steps
+    contains = metrics.get("contains", 0.0)
+    token_f1 = metrics.get("token_f1", 0.0)
+    citation_f1 = metrics.get("citation_f1", 0.0)
 
-    # Add citation reward contribution (e.g. 20% weight)
-    citation_contrib = metrics.get("citation_f1", 0.0) * 0.20
-    score = base_reward * 0.80 + citation_contrib
-
-    # Deduct invalid action and step penalties
-    invalid_penalty = getattr(args, "invalid_penalty", 0.05)
-    step_penalty = getattr(args, "step_penalty", 0.01)
-
-    score -= (invalid_action_count * invalid_penalty)
-    score -= (steps_count * step_penalty)
+    score = (1.0 * contains) + (0.5 * token_f1) + (0.5 * citation_f1)
+    score -= (0.05 * invalid_action_count)
+    score -= (0.01 * steps_count)
 
     # Clip to reasonable range
-    return max(-1.0, min(1.0, score))
+    return max(-2.0, min(2.0, score))

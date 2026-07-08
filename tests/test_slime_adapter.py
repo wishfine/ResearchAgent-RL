@@ -104,10 +104,10 @@ class TestSlimeAdapter(unittest.TestCase):
         # Run custom_rm
         reward = self.loop.run_until_complete(custom_rm(self.args, sample))
         
-        # Expect maximum base score: 1.0 (token_f1) * 0.8 + 1.0 (citation_f1) * 0.2 = 1.0
+        # Expect maximum base score: 1.0 (contains) + 0.5 (token_f1) + 0.5 (citation_f1) = 2.0
         # Deductions: 3 steps * 0.01 = 0.03
-        # Expected: 1.0 - 0.03 = 0.97
-        self.assertAlmostEqual(reward, 0.97, places=4)
+        # Expected: 2.0 - 0.03 = 1.97
+        self.assertAlmostEqual(reward, 1.97, places=4)
 
     def test_custom_reward_partial_match(self):
         sample = {
@@ -122,11 +122,10 @@ class TestSlimeAdapter(unittest.TestCase):
         }
         reward = self.loop.run_until_complete(custom_rm(self.args, sample))
         
-        # Base accuracy = 0.5 (token_f1). Citation = 1.0 (citation_f1).
-        # Weighted score: 0.5 * 0.80 + 1.0 * 0.20 = 0.60
+        # Base accuracy = 1.0 (contains) + 0.25 (token_f1 is 0.5 * 0.5) + 0.50 (citation_f1 is 1.0 * 0.5) = 1.75
         # Deductions: 3 steps * 0.01 = 0.03
-        # Expected: 0.60 - 0.03 = 0.57
-        self.assertAlmostEqual(reward, 0.57, places=4)
+        # Expected: 1.75 - 0.03 = 1.72
+        self.assertAlmostEqual(reward, 1.72, places=4)
 
     def test_custom_reward_penalties(self):
         sample = {
