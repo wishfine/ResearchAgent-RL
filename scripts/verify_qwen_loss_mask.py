@@ -21,9 +21,25 @@ def main():
         print("Please run this script on your GPU server where transformers is installed.", file=sys.stderr)
         sys.exit(1)
 
-    model_id = "Qwen/Qwen2.5-7B-Instruct"
-    print(f"Loading tokenizer: {model_id} ...")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    import argparse
+    parser = argparse.ArgumentParser(description="Qwen Tokenizer Loss Mask Verification")
+    parser.add_argument("tokenizer_path", type=str, nargs="?", default="Qwen/Qwen2.5-7B-Instruct", 
+                        help="HuggingFace model ID or local directory path containing Qwen tokenizer files")
+    args = parser.parse_args()
+
+    model_id = args.tokenizer_path
+    print(f"Loading tokenizer from: {model_id} ...")
+    
+    # Enable local-only loading to prevent trying to hit the HF Hub if network is unreachable
+    local_files_only = os.path.exists(model_id)
+    if local_files_only:
+        print("Detected local directory. Loading in offline mode.")
+    
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id, 
+        trust_remote_code=True, 
+        local_files_only=local_files_only
+    )
     print("Tokenizer loaded successfully.")
 
     # 1. Construct a mock multi-turn trajectory
