@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_004",
+  "task_type": "survey_synthesis",
+  "user_query": "Which planet is known as the Red Planet?",
+  "ground_truth_answer": "Mars",
+  "ground_truth_citations": [
+    "mars_red_planet"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

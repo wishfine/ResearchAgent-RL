@@ -1,0 +1,57 @@
+{
+  "doc_id": "toy_wiki_corpus",
+  "title": "Toy Wikipedia Corpus",
+  "metadata": {},
+  "chunks": [
+    {
+      "chunk_id": "maple_leaf_flag",
+      "content": "The national flag of Canada, often referred to as the Maple Leaf flag, consists of a red field with a white square at its centre in the ratio of 1:2:1, with a featured stylized, red, 11-pointed maple leaf charged in the centre. It was adopted in 1965.",
+      "title": "Flag of Canada"
+    },
+    {
+      "chunk_id": "romeo_juliet_author",
+      "content": "Romeo and Juliet is a tragedy written by William Shakespeare early in his career about two young Italian star-crossed lovers whose deaths ultimately reconcile their feuding families.",
+      "title": "Romeo and Juliet"
+    },
+    {
+      "chunk_id": "france_capital",
+      "content": "Paris is the capital and most populous city of France. Known for its art, fashion, gastronomy, and culture, it is situated along the Seine River in the north of the country.",
+      "title": "Paris"
+    },
+    {
+      "chunk_id": "mars_red_planet",
+      "content": "Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System. It is frequently referred to as the 'Red Planet' due to the iron oxide prevalent on its surface.",
+      "title": "Mars"
+    },
+    {
+      "chunk_id": "general_relativity_creator",
+      "content": "General relativity is the geometric theory of gravitation published by Albert Einstein in 1915. It describes gravity as a geometric property of space and time, or spacetime.",
+      "title": "General relativity"
+    },
+    {
+      "chunk_id": "water_chemical_symbol",
+      "content": "Water is an inorganic, transparent, tasteless, odorless, and nearly colorless chemical substance, which is the main constituent of Earth's hydrosphere. Its chemical formula is H2O.",
+      "title": "Properties of water"
+    },
+    {
+      "chunk_id": "tallest_mountain",
+      "content": "Mount Everest is Earth's highest mountain above sea level, located in the Mahalangur Himal sub-range of the Himalayas. The China–Nepal border runs across its summit point.",
+      "title": "Mount Everest"
+    },
+    {
+      "chunk_id": "largest_ocean",
+      "content": "The Pacific Ocean is the largest and deepest of Earth's oceanic divisions. It extends from the Arctic Ocean in the north to the Southern Ocean in the south.",
+      "title": "Pacific Ocean"
+    },
+    {
+      "chunk_id": "mona_lisa_painter",
+      "content": "The Mona Lisa is a half-length portrait painting by Italian artist Leonardo da Vinci. It has been described as 'the best known, the most visited, the most written about, the most sung about, the most parodied work of art in the world'.",
+      "title": "Mona Lisa"
+    },
+    {
+      "chunk_id": "ww2_end_year",
+      "content": "World War II, also known as the Second World War, was a global war that lasted from 1939 to 1945. It involved the vast majority of the world's countries.",
+      "title": "World War II"
+    }
+  ]
+}

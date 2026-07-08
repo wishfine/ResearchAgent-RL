@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_001",
+  "task_type": "survey_synthesis",
+  "user_query": "Which country's flag features a red maple leaf?",
+  "ground_truth_answer": "Canada",
+  "ground_truth_citations": [
+    "maple_leaf_flag"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}
