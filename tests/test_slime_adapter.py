@@ -99,6 +99,25 @@ class TestSlimeAdapter(unittest.TestCase):
         self.assertTrue(result.prompt.startswith("<|im_start|>system"))
         self.assertTrue(result.prompt.endswith("features a red maple leaf?<|im_end|>\n"))
 
+    def test_custom_generator_mock_mode_deterministic(self):
+        # Configure actor URL to 'mock' to activate direct deterministic generation
+        self.args.actor_model_url = "mock"
+        
+        # Run generate without patching urllib
+        result = self.loop.run_until_complete(
+            custom_generate(self.args, self.input_sample, self.sampling_params)
+        )
+
+        self.assertIs(result, self.input_sample)
+        self.assertEqual(result.metadata["done_reason"], "answer_submitted")
+        self.assertEqual(result.metadata["steps_count"], 3)
+        self.assertEqual(result.metadata["invalid_action_count"], 0)
+        self.assertEqual(result.metadata["final_answer"], "The answer is Canada.")
+        self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
+
+        self.assertEqual(len(result.tokens), len(result.loss_mask))
+        self.assertTrue(result.response_length > 0)
+
     def test_custom_reward_success(self):
         sample = {
             "ground_truth_answer": "Canada",

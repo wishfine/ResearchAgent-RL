@@ -68,7 +68,10 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
 
     # 3. Setup LLM Client targeting the current Actor model URL
     actor_url = getattr(args, "actor_model_url", "http://localhost:8000/v1")
-    client = LLMClient(api_url=actor_url, api_key=getattr(args, "api_key", None))
+    is_mock = (actor_url == "mock")
+    
+    if not is_mock:
+        client = LLMClient(api_url=actor_url, api_key=getattr(args, "api_key", None))
 
     # 4. Initialize rollout and context collectors
     obs = env.reset(task)
@@ -87,17 +90,26 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
     while not done:
         prompt = collector.get_prompt_for_generation()
         
-        # Query model using executor
-        loop = asyncio.get_event_loop()
-        raw_response = await loop.run_in_executor(
-            None,
-            lambda: client.generate(
-                prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stop_tokens=["<|im_end|>", "</action>"]
+        if is_mock:
+            # Deterministic policy output (SEARCH -> READ -> ANSWER)
+            if step_count == 0:
+                raw_response = '<reasoning>search</reasoning><action>{"tool": "SEARCH", "params": {"query": "Canada maple leaf", "topk": 1}}</action>'
+            elif step_count == 1:
+                raw_response = '<reasoning>read</reasoning><action>{"tool": "READ", "params": {"chunk_ids": ["maple_leaf_flag"]}}</action>'
+            else:
+                raw_response = '<reasoning>answer</reasoning><action>{"tool": "ANSWER", "params": {"answer_text": "The answer is Canada.", "cited_chunk_ids": ["maple_leaf_flag"]}}</action>'
+        else:
+            # Query model using executor
+            loop = asyncio.get_event_loop()
+            raw_response = await loop.run_in_executor(
+                None,
+                lambda: client.generate(
+                    prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stop_tokens=["<|im_end|>", "</action>"]
+                )
             )
-        )
 
         if not raw_response.endswith("</action>") and "<action>" in raw_response:
             raw_response += "</action>"
