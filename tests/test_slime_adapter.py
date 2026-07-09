@@ -84,16 +84,29 @@ class TestSlimeAdapter(unittest.TestCase):
         # Assert the returned object is the modified input sample
         self.assertIs(result, self.input_sample)
         
-        # Verify metadata is correct
+        # 1. Assert type(out).__name__ matches or is duck-type Sample
+        self.assertTrue(type(result).__name__ in {"Sample", "SlimeMockInputSample"})
+        
+        # 2. Assert len(out.tokens) == len(out.loss_mask)
+        self.assertEqual(len(result.tokens), len(result.loss_mask))
+        
+        # 3. Assert out.response_length == sum(out.loss_mask)
+        self.assertEqual(result.response_length, sum(result.loss_mask))
+        self.assertTrue(result.response_length > 0)
+        self.assertTrue(result.response_length <= len(result.tokens))
+        
+        # 4. Assert out.metadata["final_answer"] is not empty
+        self.assertTrue(bool(result.metadata["final_answer"]))
+        self.assertEqual(result.metadata["final_answer"], "The answer is Canada.")
+        
+        # 5. Assert out.metadata["done_reason"] is answer_submitted
         self.assertEqual(result.metadata["done_reason"], "answer_submitted")
+        self.assertTrue(result.metadata["done_reason"] in {"answer_submitted", "max_steps"})
+
+        # Verify other rollout metrics
         self.assertEqual(result.metadata["steps_count"], 3)
         self.assertEqual(result.metadata["invalid_action_count"], 0)
-        self.assertEqual(result.metadata["final_answer"], "The answer is Canada.")
         self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
-
-        # Check token lists matching sizes
-        self.assertEqual(len(result.tokens), len(result.loss_mask))
-        self.assertTrue(result.response_length > 0)
         
         # Verify that prompt is exactly system + user
         self.assertTrue(result.prompt.startswith("<|im_start|>system"))
@@ -109,14 +122,20 @@ class TestSlimeAdapter(unittest.TestCase):
         )
 
         self.assertIs(result, self.input_sample)
+        
+        # Verify all core assertions are met in mock mode
+        self.assertTrue(type(result).__name__ in {"Sample", "SlimeMockInputSample"})
+        self.assertEqual(len(result.tokens), len(result.loss_mask))
+        self.assertEqual(result.response_length, sum(result.loss_mask))
+        self.assertTrue(result.response_length > 0)
+        self.assertTrue(result.response_length <= len(result.tokens))
+        self.assertTrue(bool(result.metadata["final_answer"]))
         self.assertEqual(result.metadata["done_reason"], "answer_submitted")
+        self.assertTrue(result.metadata["done_reason"] in {"answer_submitted", "max_steps"})
+
         self.assertEqual(result.metadata["steps_count"], 3)
         self.assertEqual(result.metadata["invalid_action_count"], 0)
-        self.assertEqual(result.metadata["final_answer"], "The answer is Canada.")
         self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
-
-        self.assertEqual(len(result.tokens), len(result.loss_mask))
-        self.assertTrue(result.response_length > 0)
 
     def test_custom_reward_success(self):
         sample = {

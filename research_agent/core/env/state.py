@@ -77,14 +77,14 @@ class EnvState:
                 self.repeated_action_count += 1
 
     def is_terminated(self) -> tuple[bool, Optional[str]]:
+        if self.final_answer is not None:
+            return True, "answer_submitted"
         if self.remaining_steps <= 0:
             return True, "max_steps"
         if self.invalid_action_count >= self.max_invalid_actions:
             return True, "invalid_actions_exceeded"
         if self.no_progress_count >= self.max_no_progress:
             return True, "no_progress_exceeded"
-        if self.final_answer is not None:
-            return True, "answer_submitted"
         return False, None
 
     def add_candidates(self, candidates: List[CandidateChunk]) -> List[CandidateChunk]:

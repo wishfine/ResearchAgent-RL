@@ -142,8 +142,8 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
     full_text = collector.get_full_text()
     response_text = full_text[len(prompt_text):]
     
-    # Measure the response length in tokens using the exact tokenizer
-    response_length = len(tokenizer.encode(response_text))
+    # Measure the response length in tokens as the sum of trainable loss mask tokens
+    response_length = sum(loss_mask)
 
     # Keep original metadata keys if any, and append rollout details
     updated_metadata = dict(sample_metadata) if isinstance(sample_metadata, dict) else {}
