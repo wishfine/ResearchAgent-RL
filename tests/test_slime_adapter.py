@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import asyncio
 import json
 
-from research_agent.adapters.slime.custom_generator import custom_generate, SlimeSample
+from research_agent.adapters.slime.custom_generator import custom_generate
 from research_agent.adapters.slime.custom_reward import custom_rm
 
 class SlimeMockArgs:
@@ -22,6 +22,14 @@ class SlimeMockInputSample:
         self.user_query = "Which country's flag features a red maple leaf?"
         self.ground_truth_answer = "Canada"
         self.ground_truth_citations = ["maple_leaf_flag"]
+        
+        # Slime Sample fields
+        self.prompt = ""
+        self.response = ""
+        self.tokens = []
+        self.response_length = 0
+        self.loss_mask = []
+        self.metadata = {}
 
 
 class TestSlimeAdapter(unittest.TestCase):
@@ -73,8 +81,8 @@ class TestSlimeAdapter(unittest.TestCase):
             custom_generate(self.args, self.input_sample, self.sampling_params)
         )
 
-        self.assertIsInstance(result, SlimeSample)
-        self.assertEqual(result.task_id, "toy_task_001")
+        # Assert the returned object is the modified input sample
+        self.assertIs(result, self.input_sample)
         
         # Verify metadata is correct
         self.assertEqual(result.metadata["done_reason"], "answer_submitted")
@@ -84,7 +92,8 @@ class TestSlimeAdapter(unittest.TestCase):
         self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
 
         # Check token lists matching sizes
-        self.assertEqual(len(result.input_ids), len(result.loss_mask))
+        self.assertEqual(len(result.tokens), len(result.loss_mask))
+        self.assertTrue(result.response_length > 0)
         
         # Verify that prompt is exactly system + user
         self.assertTrue(result.prompt.startswith("<|im_start|>system"))
