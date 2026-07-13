@@ -12,6 +12,8 @@ class AnswerTool(BaseTool):
 
         if not answer_text or len(answer_text.strip()) == 0:
             return ToolResult(success=False, error="answer_text cannot be empty")
+        if not cited_chunk_ids:
+            raise ValueError("ANSWER requires at least one cited chunk submitted through CITE")
 
         # Validate that cited chunk IDs exist in the corpus (if corpus is available)
         corpus = state.get_corpus()

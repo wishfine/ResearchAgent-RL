@@ -21,7 +21,10 @@ READ: <action>{"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}</act
 RERANK: <action>{"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}</action>
 CITE: <action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>
 ANSWER: <action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>
-Follow SEARCH -> READ -> CITE -> ANSWER. Only cite chunk IDs returned by READ. Do not answer from common knowledge; use the retrieved evidence."""):
+Follow SEARCH -> READ -> CITE -> ANSWER. Never call ANSWER with an empty cited_chunk_ids list.
+Only cite chunk IDs returned by READ. Do not answer from common knowledge; use the retrieved evidence.
+Keep every action field inside params: never put action fields beside params.
+After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER."""):
         self.segments: List[RolloutSegment] = []
         # Add system prompt as non-trainable
         self.segments.append(RolloutSegment(

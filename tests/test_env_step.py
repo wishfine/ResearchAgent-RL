@@ -103,5 +103,14 @@ class TestEnvStepFlow(unittest.TestCase):
         self.assertTrue(done)
         self.assertEqual(reason, "invalid_actions_exceeded")
 
+    def test_parser_error_message_is_exposed_to_next_observation(self):
+        self.env.reset(self.task)
+        self.env.step(Action(tool="INVALID", intent="Action 'params' must be an object", params={}))
+
+        self.assertEqual(
+            self.env._state.trajectory[-1].error_message,
+            "Action 'params' must be an object",
+        )
+
 if __name__ == "__main__":
     unittest.main()

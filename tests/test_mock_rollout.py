@@ -40,6 +40,9 @@ class TestMockRolloutAndMasking(unittest.TestCase):
         self.assertIn('<action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>', prompt)
         self.assertIn('<action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>', prompt)
         self.assertIn("SEARCH -> READ -> CITE -> ANSWER", prompt)
+        self.assertIn("Never call ANSWER with an empty cited_chunk_ids list", prompt)
+        self.assertIn("never put action fields beside params", prompt)
+        self.assertIn("After a successful SEARCH with candidates, READ a returned chunk next", prompt)
 
     def test_build_loss_mask_boundaries(self):
         segments = [

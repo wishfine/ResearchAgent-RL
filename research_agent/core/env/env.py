@@ -48,6 +48,10 @@ class ResearchEnv:
         # 1. Validate action parameters and schema
         is_valid, error_msg = action.validate()
         if not is_valid:
+            if action.tool == "INVALID" and action.intent:
+                # ``ActionParser`` places the precise JSON/schema cause in
+                # intent. Preserve it so the next observation can repair it.
+                error_msg = action.intent
             state.record_invalid_action(error_msg)
             state.record_step(action, None, is_valid=False, error=error_msg)
             terminated, reason = state.is_terminated()
