@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from research_agent.core.corpus.store import CorpusStore
-from scripts.prepare_hotpotqa import build_split, partition_samples
+from scripts.prepare_hotpotqa import build_benchmark, build_split, partition_samples, select_samples
 
 
 def sample(index: int) -> dict:
@@ -23,6 +23,15 @@ def sample(index: int) -> dict:
 
 
 class TestHotpotQAPreparation(unittest.TestCase):
+    def test_select_samples_is_deterministic_and_checks_size(self):
+        source = [sample(index) for index in range(10)]
+        first = select_samples(source, count=4, seed=17)
+        second = select_samples(source, count=4, seed=17)
+
+        self.assertEqual([item["id"] for item in first], [item["id"] for item in second])
+        with self.assertRaises(ValueError):
+            select_samples(source, count=11, seed=17)
+
     def test_partition_is_a_disjoint_70_30_split(self):
         train, evaluation = partition_samples([sample(index) for index in range(10)], 7, 3)
 
@@ -79,6 +88,18 @@ class TestHotpotQAPreparation(unittest.TestCase):
                 build_split(samples, output_dir, train_count=7, eval_count=3)
             stats = build_split(samples, output_dir, train_count=7, eval_count=3, overwrite=True)
             self.assertEqual(stats["total_tasks"], 10)
+
+    def test_official_source_provenance_is_recorded(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            stats = build_benchmark(
+                [sample(index) for index in range(7)],
+                [sample(index + 7) for index in range(3)],
+                Path(temporary_dir) / "hotpotqa_7k3k",
+                source_splits={"train": "train", "eval": "validation"},
+            )
+
+            self.assertEqual(stats["source"]["dataset"], "hotpot_qa")
+            self.assertEqual(stats["source"]["splits"], {"train": "train", "eval": "validation"})
 
 
 if __name__ == "__main__":

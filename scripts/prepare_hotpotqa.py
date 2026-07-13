@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 
-TRAIN_FRACTION = 0.7
+DEFAULT_TRAIN_TOTAL = 7_000
+DEFAULT_EVAL_TOTAL = 3_000
 
 
 def sanitize_title(title: str) -> str:
@@ -41,6 +42,17 @@ def partition_samples(
     if not train_ids.isdisjoint(eval_ids):
         raise ValueError("Train and eval task IDs overlap")
     return train_samples, eval_samples
+
+
+def select_samples(dataset: Any, count: int, seed: int) -> List[Dict[str, Any]]:
+    """Select a deterministic subset from one official HotpotQA split."""
+    if count <= 0:
+        raise ValueError("Sample count must be positive")
+    if len(dataset) < count:
+        raise ValueError(f"Dataset has {len(dataset)} items; need {count}")
+    indices = list(range(len(dataset)))
+    random.Random(seed).shuffle(indices)
+    return [dataset[index] for index in indices[:count]]
 
 
 def _reset_output_dir(path: Path, overwrite: bool) -> None:
@@ -106,18 +118,22 @@ def _write_tasks_and_corpus(
     return tasks, chunk_count
 
 
-def build_split(
-    samples: List[Dict[str, Any]],
+def build_benchmark(
+    train_samples: List[Dict[str, Any]],
+    eval_samples: List[Dict[str, Any]],
     output_dir: str | Path,
-    train_count: int,
-    eval_count: int,
     *,
     overwrite: bool = False,
+    source_splits: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
-    """Build a train/eval split with isolated corpora and a manifest."""
+    """Build a train/eval benchmark with isolated corpora and a manifest."""
+    raw_train_ids = {item["id"] for item in train_samples}
+    raw_eval_ids = {item["id"] for item in eval_samples}
+    if not raw_train_ids.isdisjoint(raw_eval_ids):
+        raise ValueError("Train and eval task IDs overlap")
+
     output_path = Path(output_dir)
     _reset_output_dir(output_path, overwrite=overwrite)
-    train_samples, eval_samples = partition_samples(samples, train_count, eval_count)
 
     train_tasks_dir = output_path / "tasks" / "train"
     eval_tasks_dir = output_path / "tasks" / "eval"
@@ -160,6 +176,11 @@ def build_split(
         "eval_fraction": len(eval_tasks) / total_tasks if total_tasks else 0.0,
         "train_corpus_chunks": train_chunks,
         "eval_corpus_chunks": eval_chunks,
+        "source": {
+            "dataset": "hotpot_qa",
+            "configuration": "distractor",
+            "splits": source_splits or {"train": "unspecified", "eval": "unspecified"},
+        },
         "overlap_verification": {
             "task_id_overlap_detected": False,
             "corpus_isolated_by_split": True,
@@ -172,7 +193,26 @@ def build_split(
     return stats
 
 
-def _load_hotpotqa_validation() -> Any:
+def build_split(
+    samples: List[Dict[str, Any]],
+    output_dir: str | Path,
+    train_count: int,
+    eval_count: int,
+    *,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """Build a random 7:3-style split; retained for small local smoke tests."""
+    train_samples, eval_samples = partition_samples(samples, train_count, eval_count)
+    return build_benchmark(
+        train_samples,
+        eval_samples,
+        output_dir,
+        overwrite=overwrite,
+        source_splits={"train": "custom", "eval": "custom"},
+    )
+
+
+def _load_hotpotqa_split(split: str) -> Any:
     try:
         from datasets import load_dataset
     except ImportError as exc:
@@ -181,67 +221,64 @@ def _load_hotpotqa_validation() -> Any:
             "`python -m pip install 'datasets>=2.18'`."
         ) from exc
 
-    return load_dataset("hotpot_qa", "distractor", split="validation")
+    return load_dataset("hotpot_qa", "distractor", split=split)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Create task-isolated 7:3 train/eval HotpotQA distractor benchmarks."
+        description="Create a task-isolated HotpotQA benchmark from official train and validation splits."
     )
-    parser.add_argument("--output_root", default="data", help="Directory in which benchmark folders are created")
+    parser.add_argument(
+        "--output_dir",
+        default="data/hotpotqa_7k3k",
+        help="Directory for the generated benchmark",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Dataset shuffle seed")
     parser.add_argument(
         "--hf_endpoint",
         default=os.environ.get("HF_ENDPOINT", "https://hf-mirror.com"),
         help="Hugging Face endpoint used while downloading the dataset",
     )
-    parser.add_argument("--debug_total", type=int, default=20, help="Total tasks in hotpotqa_debug")
-    parser.add_argument("--mini_total", type=int, default=130, help="Total tasks in hotpotqa_mini")
+    parser.add_argument(
+        "--train_total",
+        type=int,
+        default=DEFAULT_TRAIN_TOTAL,
+        help="Tasks sampled from the official HotpotQA train split",
+    )
+    parser.add_argument(
+        "--eval_total",
+        type=int,
+        default=DEFAULT_EVAL_TOTAL,
+        help="Tasks sampled from the official HotpotQA validation split",
+    )
     parser.add_argument("--overwrite", action="store_true", help="Replace existing generated output folders")
     args = parser.parse_args()
 
-    if args.debug_total <= 0 or args.mini_total <= 0:
-        parser.error("--debug_total and --mini_total must be positive")
+    if args.train_total <= 0 or args.eval_total <= 0:
+        parser.error("--train_total and --eval_total must be positive")
 
     print("=" * 60)
     print("ResearchAgent-RL: HotpotQA 7:3 Benchmark Setup")
     print("=" * 60)
     os.environ["HF_ENDPOINT"] = args.hf_endpoint
-    print(f"Loading hotpot_qa/distractor validation via {args.hf_endpoint} ...")
-    raw_dataset = _load_hotpotqa_validation()
+    print(f"Loading hotpot_qa/distractor official train and validation via {args.hf_endpoint} ...")
+    official_train = _load_hotpotqa_split("train")
+    official_eval = _load_hotpotqa_split("validation")
+    train_samples = select_samples(official_train, args.train_total, seed=args.seed)
+    eval_samples = select_samples(official_eval, args.eval_total, seed=args.seed + 1)
 
-    total_needed = args.debug_total + args.mini_total
-    if len(raw_dataset) < total_needed:
-        raise RuntimeError(f"Dataset has {len(raw_dataset)} items; need {total_needed}")
-    indices = list(range(len(raw_dataset)))
-    random.Random(args.seed).shuffle(indices)
-    samples = [raw_dataset[index] for index in indices[:total_needed]]
-
-    debug_train = round(args.debug_total * TRAIN_FRACTION)
-    mini_train = round(args.mini_total * TRAIN_FRACTION)
-    debug_stats = build_split(
-        samples[: args.debug_total],
-        Path(args.output_root) / "hotpotqa_debug",
-        train_count=debug_train,
-        eval_count=args.debug_total - debug_train,
+    stats = build_benchmark(
+        train_samples,
+        eval_samples,
+        args.output_dir,
         overwrite=args.overwrite,
-    )
-    mini_stats = build_split(
-        samples[args.debug_total :],
-        Path(args.output_root) / "hotpotqa_mini",
-        train_count=mini_train,
-        eval_count=args.mini_total - mini_train,
-        overwrite=args.overwrite,
+        source_splits={"train": "train", "eval": "validation"},
     )
 
     print("\n[SUCCESS] HotpotQA benchmark generation completed.")
     print(
-        f"- Debug: {debug_stats['train_tasks_count']} train / "
-        f"{debug_stats['eval_tasks_count']} eval"
-    )
-    print(
-        f"- Mini: {mini_stats['train_tasks_count']} train / "
-        f"{mini_stats['eval_tasks_count']} eval"
+        f"- {stats['train_tasks_count']} train / {stats['eval_tasks_count']} eval "
+        f"({stats['train_fraction']:.1%} / {stats['eval_fraction']:.1%})"
     )
 
 
