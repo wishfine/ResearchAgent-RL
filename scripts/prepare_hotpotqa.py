@@ -190,6 +190,11 @@ def main() -> None:
     )
     parser.add_argument("--output_root", default="data", help="Directory in which benchmark folders are created")
     parser.add_argument("--seed", type=int, default=42, help="Dataset shuffle seed")
+    parser.add_argument(
+        "--hf_endpoint",
+        default=os.environ.get("HF_ENDPOINT", "https://hf-mirror.com"),
+        help="Hugging Face endpoint used while downloading the dataset",
+    )
     parser.add_argument("--debug_total", type=int, default=20, help="Total tasks in hotpotqa_debug")
     parser.add_argument("--mini_total", type=int, default=130, help="Total tasks in hotpotqa_mini")
     parser.add_argument("--overwrite", action="store_true", help="Replace existing generated output folders")
@@ -201,6 +206,8 @@ def main() -> None:
     print("=" * 60)
     print("ResearchAgent-RL: HotpotQA 7:3 Benchmark Setup")
     print("=" * 60)
+    os.environ["HF_ENDPOINT"] = args.hf_endpoint
+    print(f"Loading hotpot_qa/distractor validation via {args.hf_endpoint} ...")
     raw_dataset = _load_hotpotqa_validation()
 
     total_needed = args.debug_total + args.mini_total
