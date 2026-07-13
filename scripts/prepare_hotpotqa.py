@@ -14,7 +14,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Set
 
 
 DEFAULT_TRAIN_TOTAL = 7_000
@@ -67,40 +67,48 @@ def _reset_output_dir(path: Path, overwrite: bool) -> None:
 
 def _write_tasks_and_corpus(
     samples: Iterable[Dict[str, Any]], tasks_dir: Path, corpus_dir: Path
-) -> tuple[List[Dict[str, Any]], int]:
-    """Write one split and scope every task's search space to its own context."""
+) -> tuple[List[Dict[str, Any]], int, Set[str]]:
+    """Write one split with one corpus document file per task.
+
+    A distractor task has roughly ten candidate paragraphs.  Keeping them in a
+    single ``Document`` JSON preserves the task-level ``doc_id`` filter while
+    avoiding ten tiny files per task (and the resulting inode pressure).
+    """
     tasks: List[Dict[str, Any]] = []
     chunk_count = 0
+    chunk_ids: Set[str] = set()
 
     for item in samples:
         task_id = f"hotpot_{item['id']}"
         context = item["context"]
         supporting_titles = {fact[0] for fact in item["supporting_facts"]}
         citations: List[str] = []
+        chunks: List[Dict[str, str]] = []
 
         for title, sentences in zip(context["title"], context["sentences"]):
             chunk_id = f"{sanitize_title(title)}_{task_id}"
-            chunk_path = corpus_dir / f"{chunk_id}.json"
             text_content = " ".join(sentences)
-            with chunk_path.open("w", encoding="utf-8") as handle:
-                json.dump(
-                    {
-                        "chunk_id": chunk_id,
-                        "doc_id": task_id,
-                        "title": title,
-                        "content": text_content,
-                        "metadata": {"task_source": "hotpot_qa", "split_task_id": task_id},
-                    },
-                    handle,
-                    ensure_ascii=False,
-                    indent=2,
-                )
+            chunks.append({"chunk_id": chunk_id, "title": title, "content": text_content})
+            chunk_ids.add(chunk_id)
             chunk_count += 1
             if title in supporting_titles:
                 citations.append(chunk_id)
 
         if not citations:
             raise ValueError(f"{task_id} has no supporting-title citations")
+
+        with (corpus_dir / f"{task_id}.json").open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "doc_id": task_id,
+                    "title": task_id,
+                    "metadata": {"task_source": "hotpot_qa", "split_task_id": task_id},
+                    "chunks": chunks,
+                },
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
 
         task = {
             "task_id": task_id,
@@ -115,7 +123,7 @@ def _write_tasks_and_corpus(
             json.dump(task, handle, ensure_ascii=False, indent=2)
         tasks.append(task)
 
-    return tasks, chunk_count
+    return tasks, chunk_count, chunk_ids
 
 
 def build_benchmark(
@@ -143,11 +151,13 @@ def build_benchmark(
         directory.mkdir(parents=True, exist_ok=False)
 
     print(f"Processing {len(train_samples)} training tasks in {output_path}...")
-    train_tasks, train_chunks = _write_tasks_and_corpus(
+    train_tasks, train_chunks, train_chunk_ids = _write_tasks_and_corpus(
         train_samples, train_tasks_dir, train_corpus_dir
     )
     print(f"Processing {len(eval_samples)} evaluation tasks in {output_path}...")
-    eval_tasks, eval_chunks = _write_tasks_and_corpus(eval_samples, eval_tasks_dir, eval_corpus_dir)
+    eval_tasks, eval_chunks, eval_chunk_ids = _write_tasks_and_corpus(
+        eval_samples, eval_tasks_dir, eval_corpus_dir
+    )
 
     train_ids = {task["task_id"] for task in train_tasks}
     eval_ids = {task["task_id"] for task in eval_tasks}
@@ -155,11 +165,11 @@ def build_benchmark(
         raise AssertionError("Train and eval task IDs overlap")
 
     all_citations_exist = all(
-        (train_corpus_dir / f"{citation}.json").exists()
+        citation in train_chunk_ids
         for task in train_tasks
         for citation in task["ground_truth_citations"]
     ) and all(
-        (eval_corpus_dir / f"{citation}.json").exists()
+        citation in eval_chunk_ids
         for task in eval_tasks
         for citation in task["ground_truth_citations"]
     )
@@ -176,6 +186,8 @@ def build_benchmark(
         "eval_fraction": len(eval_tasks) / total_tasks if total_tasks else 0.0,
         "train_corpus_chunks": train_chunks,
         "eval_corpus_chunks": eval_chunks,
+        "train_corpus_document_files": len(train_tasks),
+        "eval_corpus_document_files": len(eval_tasks),
         "source": {
             "dataset": "hotpot_qa",
             "configuration": "distractor",

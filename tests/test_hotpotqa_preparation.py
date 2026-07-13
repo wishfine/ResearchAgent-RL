@@ -64,14 +64,21 @@ class TestHotpotQAPreparation(unittest.TestCase):
             eval_task = json.loads(eval_task_paths[0].read_text(encoding="utf-8"))
             self.assertEqual(train_task["reference_docs"], [train_task["task_id"]])
             self.assertEqual(eval_task["reference_docs"], [eval_task["task_id"]])
+            train_corpus_doc = json.loads(
+                (output_dir / "corpus" / "train" / f"{train_task['task_id']}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            train_citation_ids = {chunk["chunk_id"] for chunk in train_corpus_doc["chunks"]}
             for citation in train_task["ground_truth_citations"]:
-                self.assertTrue((output_dir / "corpus" / "train" / f"{citation}.json").exists())
-                self.assertFalse((output_dir / "corpus" / "eval" / f"{citation}.json").exists())
+                self.assertIn(citation, train_citation_ids)
+                self.assertFalse((output_dir / "corpus" / "eval" / f"{train_task['task_id']}.json").exists())
 
             train_chunk = json.loads(
                 next((output_dir / "corpus" / "train").glob("*.json")).read_text(encoding="utf-8")
             )
             self.assertIn(train_chunk["doc_id"], {json.loads(path.read_text())["task_id"] for path in train_task_paths})
+            self.assertEqual(len(list((output_dir / "corpus" / "train").glob("*.json"))), 7)
 
             corpus = CorpusStore(str(output_dir / "corpus" / "train"))
             corpus.load()
