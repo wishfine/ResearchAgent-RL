@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -55,6 +56,14 @@ def make_env(corpus: CorpusStore, max_steps: int) -> ResearchEnv:
     return env
 
 
+def select_task_paths(task_paths: list[str], max_episodes: int, selection_seed: int | None) -> list[str]:
+    """Choose evaluation tasks, optionally with a reproducible random sample."""
+    ordered_paths = sorted(task_paths)
+    if selection_seed is not None:
+        random.Random(selection_seed).shuffle(ordered_paths)
+    return ordered_paths[:max_episodes]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the LLM ResearchEnv baseline and save JSONL trajectories.")
     parser.add_argument("--model_url", default="http://127.0.0.1:8000/v1")
@@ -65,6 +74,12 @@ def main() -> int:
     parser.add_argument("--output_dir", default="outputs/llm_baseline")
     parser.add_argument("--max_episodes", type=int, default=3)
     parser.add_argument("--max_steps", type=int, default=6)
+    parser.add_argument(
+        "--selection_seed",
+        type=int,
+        default=None,
+        help="Shuffle task files with this seed before selecting --max_episodes",
+    )
     parser.add_argument("--max_tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_p", type=float, default=1.0)
@@ -77,11 +92,14 @@ def main() -> int:
 
     corpus = CorpusStore(args.corpus_dir)
     corpus.load()
-    task_paths = sorted(
+    available_task_paths = [
         os.path.join(args.tasks_dir, name)
         for name in os.listdir(args.tasks_dir)
         if name.endswith(".json")
-    )[: args.max_episodes]
+    ]
+    task_paths = select_task_paths(
+        available_task_paths, args.max_episodes, selection_seed=args.selection_seed
+    )
     if not task_paths:
         parser.error(f"no JSON tasks found in: {args.tasks_dir}")
 
