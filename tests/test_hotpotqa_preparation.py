@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from research_agent.core.corpus.store import CorpusStore
-from scripts.prepare_hotpotqa import build_benchmark, build_split, partition_samples, select_samples
+from scripts.prepare_hotpotqa import (
+    HOTPOTQA_REPO_ID,
+    _load_hotpotqa_split,
+    build_benchmark,
+    build_split,
+    partition_samples,
+    select_samples,
+)
 
 
 def sample(index: int) -> dict:
@@ -23,6 +33,20 @@ def sample(index: int) -> dict:
 
 
 class TestHotpotQAPreparation(unittest.TestCase):
+    def test_loader_uses_fully_qualified_hub_repository(self):
+        calls = []
+        fake_datasets = types.ModuleType("datasets")
+
+        def fake_load_dataset(*args, **kwargs):
+            calls.append((args, kwargs))
+            return "loaded"
+
+        fake_datasets.load_dataset = fake_load_dataset
+        with patch.dict(sys.modules, {"datasets": fake_datasets}):
+            self.assertEqual(_load_hotpotqa_split("train"), "loaded")
+
+        self.assertEqual(calls, [((HOTPOTQA_REPO_ID, "distractor"), {"split": "train"})])
+
     def test_select_samples_is_deterministic_and_checks_size(self):
         source = [sample(index) for index in range(10)]
         first = select_samples(source, count=4, seed=17)

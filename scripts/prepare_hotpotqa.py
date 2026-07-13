@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Set
 
 DEFAULT_TRAIN_TOTAL = 7_000
 DEFAULT_EVAL_TOTAL = 3_000
+HOTPOTQA_REPO_ID = "hotpotqa/hotpot_qa"
 
 
 def sanitize_title(title: str) -> str:
@@ -233,7 +234,9 @@ def _load_hotpotqa_split(split: str) -> Any:
             "`python -m pip install 'datasets>=2.18'`."
         ) from exc
 
-    return load_dataset("hotpot_qa", "distractor", split=split)
+    # datasets>=5 requires a fully-qualified Hub repository ID.  The old
+    # shorthand ``hotpot_qa`` fails before dataset download begins.
+    return load_dataset(HOTPOTQA_REPO_ID, "distractor", split=split)
 
 
 def main() -> None:
