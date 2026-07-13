@@ -34,11 +34,11 @@ class TestMockRolloutAndMasking(unittest.TestCase):
     def test_default_prompt_declares_exact_schema_for_every_tool(self):
         prompt = ConversationCollector().segments[0].text
 
-        self.assertIn('"query":"...","topk":3', prompt)
-        self.assertIn('"chunk_ids":["..."]', prompt)
-        self.assertIn('"candidate_chunk_ids":["..."],"topk":3', prompt)
-        self.assertIn('"claims":["..."]', prompt)
-        self.assertIn('"answer_text":"...","cited_chunk_ids":["..."]', prompt)
+        self.assertIn('<action>{"tool":"SEARCH","intent":"...","params":{"query":"...","topk":3}}</action>', prompt)
+        self.assertIn('<action>{"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}</action>', prompt)
+        self.assertIn('<action>{"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}</action>', prompt)
+        self.assertIn('<action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>', prompt)
+        self.assertIn('<action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>', prompt)
         self.assertIn("SEARCH -> READ -> CITE -> ANSWER", prompt)
 
     def test_build_loss_mask_boundaries(self):

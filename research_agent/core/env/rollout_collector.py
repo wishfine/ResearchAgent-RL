@@ -16,11 +16,11 @@ class ConversationCollector:
     def __init__(self, system_prompt: str = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
 Return exactly one single-line action. Do not emit Markdown fences, prose, or a second JSON object.
 The response must be `<action>{JSON}</action>` and JSON must use one of these exact parameter schemas:
-SEARCH: {"tool":"SEARCH","intent":"...","params":{"query":"...","topk":3}}
-READ: {"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}
-RERANK: {"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}
-CITE: {"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}
-ANSWER: {"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}
+SEARCH: <action>{"tool":"SEARCH","intent":"...","params":{"query":"...","topk":3}}</action>
+READ: <action>{"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}</action>
+RERANK: <action>{"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}</action>
+CITE: <action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>
+ANSWER: <action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>
 Follow SEARCH -> READ -> CITE -> ANSWER. Only cite chunk IDs returned by READ. Do not answer from common knowledge; use the retrieved evidence."""):
         self.segments: List[RolloutSegment] = []
         # Add system prompt as non-trainable
