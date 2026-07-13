@@ -7,6 +7,7 @@ from research_agent.core.schema.action import Action
 from research_agent.core.tools.search import SearchTool
 from research_agent.core.tools.read import ReadTool
 from research_agent.core.tools.answer import AnswerTool
+from research_agent.core.tools.cite import CiteTool
 
 class TestEnvStepFlow(unittest.TestCase):
     def setUp(self):
@@ -43,6 +44,7 @@ class TestEnvStepFlow(unittest.TestCase):
         self.env = ResearchEnv(corpus=self.corpus, max_steps=5)
         self.env.register_tool(SearchTool())
         self.env.register_tool(ReadTool())
+        self.env.register_tool(CiteTool())
         self.env.register_tool(AnswerTool())
 
     def test_reset_and_step_sequence(self):
@@ -65,6 +67,11 @@ class TestEnvStepFlow(unittest.TestCase):
         self.assertEqual(obs.read_summaries[0].chunk_id, "doc1_c1")
         self.assertEqual(obs.remaining_steps, 3)
 
+        # CITE step
+        obs, done, reason = self.env.step(Action.cite(["doc1_c1"], ["Water is H2O."]))
+        self.assertFalse(done)
+        self.assertEqual(obs.cited_chunks, ["doc1_c1"])
+
         # ANSWER step
         obs, done, reason = self.env.step(Action.answer(answer_text="Water is H2O.", cited_chunk_ids=["doc1_c1"]))
         self.assertTrue(done)
@@ -76,7 +83,7 @@ class TestEnvStepFlow(unittest.TestCase):
         self.assertEqual(result.done_reason, "answer_submitted")
         self.assertEqual(result.final_answer, "Water is H2O.")
         self.assertEqual(result.cited_chunk_ids, ["doc1_c1"])
-        self.assertEqual(result.total_steps, 3)
+        self.assertEqual(result.total_steps, 4)
 
     def test_invalid_action_penalty(self):
         self.env.reset(self.task)

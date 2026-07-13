@@ -45,10 +45,11 @@ class TestSlimeAdapter(unittest.TestCase):
 
     @patch("urllib.request.urlopen")
     def test_custom_generator_end_to_end(self, mock_urlopen):
-        # We mock a sequence of three HTTP responses:
+        # We mock a citation-grounded sequence of four HTTP responses:
         # 1. Search action response
         # 2. Read action response
-        # 3. Answer action response
+        # 3. Cite action response
+        # 4. Answer action response
         
         mock_resp_1 = MagicMock()
         mock_resp_1.read.return_value = json.dumps({
@@ -62,6 +63,11 @@ class TestSlimeAdapter(unittest.TestCase):
 
         mock_resp_3 = MagicMock()
         mock_resp_3.read.return_value = json.dumps({
+            "choices": [{"text": '<reasoning>cite</reasoning><action>{"tool": "CITE", "params": {"chunk_ids": ["maple_leaf_flag"], "claims": ["Canada has a maple leaf flag."]}}</action>'}]
+        }).encode("utf-8")
+
+        mock_resp_4 = MagicMock()
+        mock_resp_4.read.return_value = json.dumps({
             "choices": [{"text": '<reasoning>answer</reasoning><action>{"tool": "ANSWER", "params": {"answer_text": "The answer is Canada.", "cited_chunk_ids": ["maple_leaf_flag"]}}</action>'}]
         }).encode("utf-8")
 
@@ -73,8 +79,10 @@ class TestSlimeAdapter(unittest.TestCase):
         
         mock_enter_3 = MagicMock()
         mock_enter_3.__enter__.return_value = mock_resp_3
+        mock_enter_4 = MagicMock()
+        mock_enter_4.__enter__.return_value = mock_resp_4
 
-        mock_urlopen.side_effect = [mock_enter_1, mock_enter_2, mock_enter_3]
+        mock_urlopen.side_effect = [mock_enter_1, mock_enter_2, mock_enter_3, mock_enter_4]
 
         # Execute custom_generate asynchronously
         result = self.loop.run_until_complete(
@@ -104,7 +112,7 @@ class TestSlimeAdapter(unittest.TestCase):
         self.assertTrue(result.metadata["done_reason"] in {"answer_submitted", "max_steps"})
 
         # Verify other rollout metrics
-        self.assertEqual(result.metadata["steps_count"], 3)
+        self.assertEqual(result.metadata["steps_count"], 4)
         self.assertEqual(result.metadata["invalid_action_count"], 0)
         self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
         
@@ -133,7 +141,7 @@ class TestSlimeAdapter(unittest.TestCase):
         self.assertEqual(result.metadata["done_reason"], "answer_submitted")
         self.assertTrue(result.metadata["done_reason"] in {"answer_submitted", "max_steps"})
 
-        self.assertEqual(result.metadata["steps_count"], 3)
+        self.assertEqual(result.metadata["steps_count"], 4)
         self.assertEqual(result.metadata["invalid_action_count"], 0)
         self.assertEqual(result.metadata["cited_chunk_ids"], ["maple_leaf_flag"])
 

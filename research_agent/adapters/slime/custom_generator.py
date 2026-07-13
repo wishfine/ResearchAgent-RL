@@ -13,6 +13,7 @@ from ...core.env.mask_builder import build_loss_mask, MockTokenizer
 from ...core.tools.search import SearchTool
 from ...core.tools.read import ReadTool
 from ...core.tools.answer import AnswerTool
+from ...core.tools.cite import CiteTool
 
 # Module-level cache only for the CorpusStore to prevent reloading database in worker processes.
 _cached_corpus: CorpusStore | None = None
@@ -37,6 +38,7 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
     env = ResearchEnv(corpus=corpus, max_steps=max_steps)
     env.register_tool(SearchTool())
     env.register_tool(ReadTool())
+    env.register_tool(CiteTool())
     env.register_tool(AnswerTool())
 
     # Helper function for safe retrieval from either objects or dictionaries
@@ -95,11 +97,13 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
         prompt = collector.get_prompt_for_generation()
         
         if is_mock:
-            # Deterministic policy output (SEARCH -> READ -> ANSWER)
+            # Deterministic policy output (SEARCH -> READ -> CITE -> ANSWER)
             if step_count == 0:
                 raw_response = '<reasoning>search</reasoning><action>{"tool": "SEARCH", "params": {"query": "Canada maple leaf", "topk": 1}}</action>'
             elif step_count == 1:
                 raw_response = '<reasoning>read</reasoning><action>{"tool": "READ", "params": {"chunk_ids": ["maple_leaf_flag"]}}</action>'
+            elif step_count == 2:
+                raw_response = '<reasoning>cite</reasoning><action>{"tool": "CITE", "params": {"chunk_ids": ["maple_leaf_flag"], "claims": ["Canada has a red maple leaf flag."]}}</action>'
             else:
                 raw_response = '<reasoning>answer</reasoning><action>{"tool": "ANSWER", "params": {"answer_text": "The answer is Canada.", "cited_chunk_ids": ["maple_leaf_flag"]}}</action>'
         else:

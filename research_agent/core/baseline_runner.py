@@ -23,6 +23,12 @@ def _token_f1(prediction: str, reference: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def _contains_reference(prediction: str, reference: str) -> float:
+    predicted = " ".join(re.findall(r"\w+", (prediction or "").lower()))
+    expected = " ".join(re.findall(r"\w+", (reference or "").lower()))
+    return float(bool(expected) and expected in predicted)
+
+
 def evaluate_episode(episode, task, search_history: list[dict]) -> dict:
     cited = set(episode.cited_chunk_ids)
     expected_citations = set(task.ground_truth_citations)
@@ -34,7 +40,11 @@ def evaluate_episode(episode, task, search_history: list[dict]) -> dict:
         if citation_precision + citation_recall
         else 0.0
     )
-    answer_quality = _token_f1(episode.final_answer, task.ground_truth_answer or "")
+    answer_token_f1 = _token_f1(episode.final_answer, task.ground_truth_answer or "")
+    answer_contains = _contains_reference(episode.final_answer, task.ground_truth_answer or "")
+    # Toy QA references are often short entities.  A complete generated answer
+    # should not be scored below threshold merely because it contains context.
+    answer_quality = max(answer_token_f1, answer_contains)
     search_queries = [item["query"] for item in search_history if item.get("query")]
     repeated_query_rate = (
         (len(search_queries) - len(set(search_queries))) / len(search_queries)
@@ -55,6 +65,8 @@ def evaluate_episode(episode, task, search_history: list[dict]) -> dict:
         "invalid_action_rate": invalid_action_rate,
         "task_success": task_success,
         "answer_quality": answer_quality,
+        "answer_contains": answer_contains,
+        "answer_token_f1": answer_token_f1,
         "citation_precision": citation_precision,
         "citation_recall": citation_recall,
         "citation_f1": citation_f1,
@@ -176,6 +188,8 @@ def aggregate_records(records: Iterable[dict]) -> dict:
         "action_parse_success_rate",
         "invalid_action_rate",
         "answer_quality",
+        "answer_contains",
+        "answer_token_f1",
         "citation_precision",
         "citation_recall",
         "citation_f1",

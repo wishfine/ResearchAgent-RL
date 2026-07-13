@@ -25,6 +25,13 @@ class AnswerTool(BaseTool):
                 error=f"Invalid chunk IDs cited: {invalid_ids[:5]}",
             )
 
+        uncited_ids = [cid for cid in cited_chunk_ids if cid not in state.cited_chunks]
+        if uncited_ids:
+            raise ValueError(
+                "ANSWER requires cited_chunk_ids to be submitted through CITE first: "
+                f"{uncited_ids[:5]}"
+            )
+
         # Record answer and update cited_chunks
         state.final_answer = answer_text
         state.cite_chunks(cited_chunk_ids)
