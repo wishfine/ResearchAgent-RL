@@ -31,6 +31,16 @@ class TestMockRolloutAndMasking(unittest.TestCase):
             expected + "<|im_start|>assistant\n"
         )
 
+    def test_default_prompt_declares_exact_schema_for_every_tool(self):
+        prompt = ConversationCollector().segments[0].text
+
+        self.assertIn('"query":"...","topk":3', prompt)
+        self.assertIn('"chunk_ids":["..."]', prompt)
+        self.assertIn('"candidate_chunk_ids":["..."],"topk":3', prompt)
+        self.assertIn('"claims":["..."]', prompt)
+        self.assertIn('"answer_text":"...","cited_chunk_ids":["..."]', prompt)
+        self.assertIn("SEARCH -> READ -> CITE -> ANSWER", prompt)
+
     def test_build_loss_mask_boundaries(self):
         segments = [
             RolloutSegment(role="user", text="Hello", is_trainable=False),
