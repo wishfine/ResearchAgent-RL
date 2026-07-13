@@ -56,6 +56,28 @@ def select_samples(dataset: Any, count: int, seed: int) -> List[Dict[str, Any]]:
     return [dataset[index] for index in indices[:count]]
 
 
+def supporting_fact_titles(supporting_facts: Any) -> Set[str]:
+    """Extract supporting paragraph titles from either HotpotQA representation.
+
+    Raw HotpotQA examples encode supporting facts as ``[[title, sent_id], ...]``.
+    Hugging Face ``datasets`` materializes this sequence-of-records feature as
+    ``{"title": [...], "sent_id": [...]}``, so both forms must be accepted.
+    """
+    if isinstance(supporting_facts, dict):
+        titles = supporting_facts.get("title", [])
+        return {titles} if isinstance(titles, str) else set(titles)
+
+    titles: Set[str] = set()
+    for fact in supporting_facts:
+        if isinstance(fact, dict):
+            title = fact.get("title")
+        else:
+            title = fact[0] if fact else None
+        if title:
+            titles.add(title)
+    return titles
+
+
 def _reset_output_dir(path: Path, overwrite: bool) -> None:
     if path.exists():
         if not overwrite:
@@ -82,7 +104,7 @@ def _write_tasks_and_corpus(
     for item in samples:
         task_id = f"hotpot_{item['id']}"
         context = item["context"]
-        supporting_titles = {fact[0] for fact in item["supporting_facts"]}
+        supporting_titles = supporting_fact_titles(item["supporting_facts"])
         citations: List[str] = []
         chunks: List[Dict[str, str]] = []
 

@@ -16,6 +16,7 @@ from scripts.prepare_hotpotqa import (
     build_split,
     partition_samples,
     select_samples,
+    supporting_fact_titles,
 )
 
 
@@ -33,6 +34,13 @@ def sample(index: int) -> dict:
 
 
 class TestHotpotQAPreparation(unittest.TestCase):
+    def test_supporting_fact_titles_supports_raw_and_datasets_formats(self):
+        raw = [["Evidence A", 0], ["Evidence B", 2]]
+        datasets_format = {"title": ["Evidence A", "Evidence B"], "sent_id": [0, 2]}
+
+        self.assertEqual(supporting_fact_titles(raw), {"Evidence A", "Evidence B"})
+        self.assertEqual(supporting_fact_titles(datasets_format), {"Evidence A", "Evidence B"})
+
     def test_loader_uses_fully_qualified_hub_repository(self):
         calls = []
         fake_datasets = types.ModuleType("datasets")
