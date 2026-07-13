@@ -29,7 +29,14 @@ def _contains_reference(prediction: str, reference: str) -> float:
     return float(bool(expected) and expected in predicted)
 
 
-def evaluate_episode(episode, task, search_history: list[dict]) -> dict:
+def evaluate_episode(
+    episode,
+    task,
+    search_history: list[dict],
+    *,
+    parsed_action_count: int | None = None,
+    action_attempt_count: int | None = None,
+) -> dict:
     cited = set(episode.cited_chunk_ids)
     expected_citations = set(task.ground_truth_citations)
     overlap = cited & expected_citations
@@ -52,7 +59,15 @@ def evaluate_episode(episode, task, search_history: list[dict]) -> dict:
         else 0.0
     )
     invalid_action_rate = episode.n_invalid_steps / episode.total_steps if episode.total_steps else 0.0
-    action_parse_success_rate = 1.0 - invalid_action_rate
+    if action_attempt_count is None:
+        action_attempt_count = episode.total_steps
+    if parsed_action_count is None:
+        # Backward-compatible fallback for records generated before parser and
+        # environment validity were tracked separately.
+        parsed_action_count = action_attempt_count - episode.n_invalid_steps
+    action_parse_success_rate = (
+        parsed_action_count / action_attempt_count if action_attempt_count else 0.0
+    )
     task_success = answer_quality >= 0.5 and citation_recall >= 0.3
     reward = (
         answer_quality
@@ -93,6 +108,8 @@ def run_episode(
     total_latency = 0.0
     prompt_tokens = 0
     completion_tokens = 0
+    parsed_action_count = 0
+    action_attempt_count = 0
     termination_reason: str | None = None
 
     while termination_reason is None:
@@ -125,6 +142,8 @@ def run_episode(
         total_latency += turn.latency_sec
         prompt_tokens += turn.prompt_tokens
         completion_tokens += turn.completion_tokens
+        action_attempt_count += 1
+        parsed_action_count += int(turn.action.tool != "INVALID")
         observation, done, reason = env.step(turn.action)
         trajectory_step = env._state.trajectory[-1]
         steps.append(
@@ -160,7 +179,13 @@ def run_episode(
     episode = env.finalize_episode()
     if termination_reason == "actor_error":
         episode.done_reason = termination_reason
-    metrics = evaluate_episode(episode, task, env._state.search_history)
+    metrics = evaluate_episode(
+        episode,
+        task,
+        env._state.search_history,
+        parsed_action_count=parsed_action_count,
+        action_attempt_count=action_attempt_count,
+    )
     messages = [{"role": segment.role, "content": segment.text} for segment in collector.segments]
     return {
         "task_id": task.task_id,

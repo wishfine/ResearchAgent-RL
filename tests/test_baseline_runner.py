@@ -122,6 +122,25 @@ class TestBaselineRunner(unittest.TestCase):
         self.assertEqual(metrics["answer_contains"], 1.0)
         self.assertEqual(metrics["answer_quality"], 1.0)
 
+    def test_parser_metric_excludes_semantically_invalid_actions(self):
+        episode = EpisodeResult(
+            task_id="canada",
+            final_answer="Canada",
+            cited_chunk_ids=["maple_leaf_flag"],
+            total_steps=4,
+            n_invalid_steps=1,
+        )
+        metrics = evaluate_episode(
+            episode,
+            self.task,
+            [],
+            parsed_action_count=4,
+            action_attempt_count=4,
+        )
+
+        self.assertEqual(metrics["action_parse_success_rate"], 1.0)
+        self.assertEqual(metrics["invalid_action_rate"], 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()
