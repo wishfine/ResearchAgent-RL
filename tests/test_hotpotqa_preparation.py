@@ -1,61 +1,85 @@
 from __future__ import annotations
-import unittest
-import os
+
 import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from research_agent.core.corpus.store import CorpusStore
+from scripts.prepare_hotpotqa import build_split, partition_samples
+
+
+def sample(index: int) -> dict:
+    return {
+        "id": f"sample_{index}",
+        "question": f"Question {index}?",
+        "answer": f"Answer {index}",
+        "context": {
+            "title": [f"Evidence {index}", f"Distractor {index}"],
+            "sentences": [[f"Evidence sentence {index}."], [f"Distractor sentence {index}."]],
+        },
+        "supporting_facts": [[f"Evidence {index}", 0]],
+    }
+
 
 class TestHotpotQAPreparation(unittest.TestCase):
-    def test_debug_split_layout_and_stats(self):
-        stats_path = "data/hotpotqa_debug/stats.json"
-        if not os.path.exists(stats_path):
-            self.skipTest("hotpotqa_debug stats.json not found. Run prepare_hotpotqa.py first.")
-            
-        with open(stats_path, "r", encoding="utf-8") as f:
-            stats = json.load(f)
-            
-        self.assertEqual(stats["split_name"], "hotpotqa_debug")
-        self.assertEqual(stats["train_tasks_count"], 14)
-        self.assertEqual(stats["test_tasks_count"], 6)
-        self.assertEqual(stats["total_tasks"], 20)
-        self.assertFalse(stats["overlap_verification"]["leakage_detected"])
-        self.assertTrue(stats["overlap_verification"]["all_citations_exist"])
-        
-        # Verify that task configurations actually exist
-        train_dir = "data/hotpotqa_debug/tasks/train"
-        test_dir = "data/hotpotqa_debug/tasks/test"
-        self.assertEqual(len(os.listdir(train_dir)), 14)
-        self.assertEqual(len(os.listdir(test_dir)), 6)
+    def test_partition_is_a_disjoint_70_30_split(self):
+        train, evaluation = partition_samples([sample(index) for index in range(10)], 7, 3)
 
-    def test_mini_split_layout_and_stats(self):
-        stats_path = "data/hotpotqa_mini/stats.json"
-        if not os.path.exists(stats_path):
-            self.skipTest("hotpotqa_mini stats.json not found. Run prepare_hotpotqa.py first.")
-            
-        with open(stats_path, "r", encoding="utf-8") as f:
-            stats = json.load(f)
-            
-        self.assertEqual(stats["split_name"], "hotpotqa_mini")
-        self.assertEqual(stats["train_tasks_count"], 100)
-        self.assertEqual(stats["test_tasks_count"], 30)
-        self.assertEqual(stats["total_tasks"], 130)
-        self.assertFalse(stats["overlap_verification"]["leakage_detected"])
-        self.assertTrue(stats["overlap_verification"]["all_citations_exist"])
-        
-        # Verify that task configurations actually exist
-        train_dir = "data/hotpotqa_mini/tasks/train"
-        test_dir = "data/hotpotqa_mini/tasks/test"
-        self.assertEqual(len(os.listdir(train_dir)), 100)
-        self.assertEqual(len(os.listdir(test_dir)), 30)
-        
-        # Verify citation chunk file exists in corpus directory for random samples
-        corpus_dir = "data/hotpotqa_mini/corpus"
-        train_files = os.listdir(train_dir)
-        if train_files:
-            sample_file = os.path.join(train_dir, train_files[0])
-            with open(sample_file, "r") as f:
-                task_data = json.load(f)
-            for citation_id in task_data["ground_truth_citations"]:
-                citation_path = os.path.join(corpus_dir, f"{citation_id}.json")
-                self.assertTrue(os.path.exists(citation_path), f"Citation {citation_id} file not found!")
+        self.assertEqual(len(train), 7)
+        self.assertEqual(len(evaluation), 3)
+        self.assertTrue({item["id"] for item in train}.isdisjoint(item["id"] for item in evaluation))
+
+    def test_build_split_creates_isolated_train_and_eval_corpora(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output_dir = Path(temporary_dir) / "hotpotqa_mini"
+            stats = build_split(
+                [sample(index) for index in range(10)],
+                output_dir,
+                train_count=7,
+                eval_count=3,
+            )
+
+            self.assertEqual(stats["train_tasks_count"], 7)
+            self.assertEqual(stats["eval_tasks_count"], 3)
+            self.assertEqual(stats["train_fraction"], 0.7)
+            self.assertEqual(stats["eval_fraction"], 0.3)
+            self.assertTrue(stats["overlap_verification"]["corpus_isolated_by_split"])
+
+            train_task_paths = sorted((output_dir / "tasks" / "train").glob("*.json"))
+            eval_task_paths = sorted((output_dir / "tasks" / "eval").glob("*.json"))
+            self.assertEqual(len(train_task_paths), 7)
+            self.assertEqual(len(eval_task_paths), 3)
+
+            train_task = json.loads(train_task_paths[0].read_text(encoding="utf-8"))
+            eval_task = json.loads(eval_task_paths[0].read_text(encoding="utf-8"))
+            self.assertEqual(train_task["reference_docs"], [train_task["task_id"]])
+            self.assertEqual(eval_task["reference_docs"], [eval_task["task_id"]])
+            for citation in train_task["ground_truth_citations"]:
+                self.assertTrue((output_dir / "corpus" / "train" / f"{citation}.json").exists())
+                self.assertFalse((output_dir / "corpus" / "eval" / f"{citation}.json").exists())
+
+            train_chunk = json.loads(
+                next((output_dir / "corpus" / "train").glob("*.json")).read_text(encoding="utf-8")
+            )
+            self.assertIn(train_chunk["doc_id"], {json.loads(path.read_text())["task_id"] for path in train_task_paths})
+
+            corpus = CorpusStore(str(output_dir / "corpus" / "train"))
+            corpus.load()
+            results = corpus.search("evidence", doc_ids=train_task["reference_docs"])
+            self.assertTrue(results)
+            self.assertTrue(all(result.doc_id == train_task["task_id"] for result in results))
+
+    def test_existing_output_requires_explicit_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output_dir = Path(temporary_dir) / "hotpotqa_debug"
+            samples = [sample(index) for index in range(10)]
+            build_split(samples, output_dir, train_count=7, eval_count=3)
+            with self.assertRaises(FileExistsError):
+                build_split(samples, output_dir, train_count=7, eval_count=3)
+            stats = build_split(samples, output_dir, train_count=7, eval_count=3, overwrite=True)
+            self.assertEqual(stats["total_tasks"], 10)
+
 
 if __name__ == "__main__":
     unittest.main()

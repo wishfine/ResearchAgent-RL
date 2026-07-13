@@ -1,173 +1,242 @@
+"""Create reproducible, task-isolated HotpotQA train/eval benchmarks.
+
+The HotpotQA ``distractor`` configuration provides each question with a small
+set of Wikipedia paragraphs containing both evidence and distractors.  We keep
+those candidate paragraphs local to the task: this prevents a train item (or a
+different evaluation item) from becoming an accidental retrieval source.
+"""
+
 from __future__ import annotations
-import os
+
+import argparse
 import json
+import os
 import random
-import sys
-from typing import Dict, Any, List
+import shutil
+from pathlib import Path
+from typing import Any, Dict, Iterable, List
+
+
+TRAIN_FRACTION = 0.7
+
 
 def sanitize_title(title: str) -> str:
-    return "".join(c if c.isalnum() else "_" for c in title).lower()
+    """Return a stable filename-safe title fragment."""
+    return "".join(char if char.isalnum() else "_" for char in title).lower()
 
-def build_split(samples: List[Dict[str, Any]], output_dir: str, train_count: int, test_count: int) -> Dict[str, Any]:
-    print(f"\nBuilding split in: {output_dir}")
-    
-    corpus_dir = os.path.join(output_dir, "corpus")
-    train_tasks_dir = os.path.join(output_dir, "tasks", "train")
-    test_tasks_dir = os.path.join(output_dir, "tasks", "test")
-    
-    os.makedirs(corpus_dir, exist_ok=True)
-    os.makedirs(train_tasks_dir, exist_ok=True)
-    os.makedirs(test_tasks_dir, exist_ok=True)
-    
-    # 1. Slice and partition samples
-    total_needed = train_count + test_count
-    selected = samples[:total_needed]
-    
+
+def partition_samples(
+    samples: List[Dict[str, Any]], train_count: int, eval_count: int
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Select and partition samples without task-id overlap."""
+    required = train_count + eval_count
+    if len(samples) < required:
+        raise ValueError(f"Need {required} samples, received {len(samples)}")
+
+    selected = samples[:required]
     train_samples = selected[:train_count]
-    test_samples = selected[train_count:]
-    
-    # 2. Leakage verification check (disjoint sets)
-    train_ids = set(item["id"] for item in train_samples)
-    test_ids = set(item["id"] for item in test_samples)
-    assert train_ids.isdisjoint(test_ids), "CRITICAL: Train and test task IDs overlap!"
+    eval_samples = selected[train_count:]
+    train_ids = {item["id"] for item in train_samples}
+    eval_ids = {item["id"] for item in eval_samples}
+    if not train_ids.isdisjoint(eval_ids):
+        raise ValueError("Train and eval task IDs overlap")
+    return train_samples, eval_samples
 
-    total_chunks_created = 0
-    task_chunks_stats = []
 
-    def process_split(split_items: List[Dict[str, Any]], target_dir: str) -> List[Dict[str, Any]]:
-        nonlocal total_chunks_created
-        processed_tasks = []
-        
-        for item in split_items:
-            task_id = f"hotpot_{item['id']}"
-            question = item["question"]
-            answer = item["answer"]
-            
-            # Map Wiki paragraphs to corpus chunks
-            context = item["context"]
-            supporting_facts = item["supporting_facts"]
-            supporting_titles = set(fact[0] for fact in supporting_facts)
-            
-            citations = []
-            local_chunks = 0
-            
-            for title, sentences in zip(context["title"], context["sentences"]):
-                chunk_id = f"{sanitize_title(title)}_{task_id}"
-                text_content = "".join(sentences)
-                
-                # Save chunk to corpus
-                chunk_file = os.path.join(corpus_dir, f"{chunk_id}.json")
-                with open(chunk_file, "w", encoding="utf-8") as f:
-                    json.dump({
+def _reset_output_dir(path: Path, overwrite: bool) -> None:
+    if path.exists():
+        if not overwrite:
+            raise FileExistsError(
+                f"{path} already exists. Pass --overwrite to replace this generated benchmark."
+            )
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=False)
+
+
+def _write_tasks_and_corpus(
+    samples: Iterable[Dict[str, Any]], tasks_dir: Path, corpus_dir: Path
+) -> tuple[List[Dict[str, Any]], int]:
+    """Write one split and scope every task's search space to its own context."""
+    tasks: List[Dict[str, Any]] = []
+    chunk_count = 0
+
+    for item in samples:
+        task_id = f"hotpot_{item['id']}"
+        context = item["context"]
+        supporting_titles = {fact[0] for fact in item["supporting_facts"]}
+        citations: List[str] = []
+
+        for title, sentences in zip(context["title"], context["sentences"]):
+            chunk_id = f"{sanitize_title(title)}_{task_id}"
+            chunk_path = corpus_dir / f"{chunk_id}.json"
+            text_content = " ".join(sentences)
+            with chunk_path.open("w", encoding="utf-8") as handle:
+                json.dump(
+                    {
                         "chunk_id": chunk_id,
+                        "doc_id": task_id,
                         "title": title,
-                        "text": text_content,
-                        "metadata": {"task_source": "hotpot_qa"}
-                    }, f, ensure_ascii=False, indent=2)
-                
-                total_chunks_created += 1
-                local_chunks += 1
-                
-                if title in supporting_titles:
-                    citations.append(chunk_id)
+                        "content": text_content,
+                        "metadata": {"task_source": "hotpot_qa", "split_task_id": task_id},
+                    },
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            chunk_count += 1
+            if title in supporting_titles:
+                citations.append(chunk_id)
 
-            # Assert that every citation ID maps to a file that was just created
-            for cid in citations:
-                citation_path = os.path.join(corpus_dir, f"{cid}.json")
-                assert os.path.exists(citation_path), f"ERROR: Citation file {citation_path} was not created!"
-                
-            task_config = {
-                "task_id": task_id,
-                "user_query": question,
-                "ground_truth_answer": answer,
-                "ground_truth_citations": citations,
-                "reference_docs": []
-            }
-            
-            task_file = os.path.join(target_dir, f"{task_id}.json")
-            with open(task_file, "w", encoding="utf-8") as f:
-                json.dump(task_config, f, ensure_ascii=False, indent=2)
-                
-            task_chunks_stats.append(local_chunks)
-            processed_tasks.append(task_config)
-            
-        return processed_tasks
+        if not citations:
+            raise ValueError(f"{task_id} has no supporting-title citations")
 
-    print(f"Processing {len(train_samples)} training tasks...")
-    train_tasks = process_split(train_samples, train_tasks_dir)
-    
-    print(f"Processing {len(test_samples)} testing tasks...")
-    test_tasks = process_split(test_samples, test_tasks_dir)
-
-    # 3. Create stats.json summary
-    avg_chunks = sum(task_chunks_stats) / len(task_chunks_stats) if task_chunks_stats else 0
-    stats = {
-        "split_name": os.path.basename(output_dir),
-        "total_tasks": len(train_tasks) + len(test_tasks),
-        "train_tasks_count": len(train_tasks),
-        "test_tasks_count": len(test_tasks),
-        "total_corpus_chunks": total_chunks_created,
-        "average_chunks_per_task": avg_chunks,
-        "overlap_verification": {
-            "leakage_detected": not train_ids.isdisjoint(test_ids),
-            "all_citations_exist": True
+        task = {
+            "task_id": task_id,
+            "user_query": item["question"],
+            "ground_truth_answer": item["answer"],
+            "ground_truth_citations": citations,
+            # CorpusStore filters on doc_id, so a task cannot retrieve another
+            # task's context even when the whole split corpus is loaded.
+            "reference_docs": [task_id],
         }
+        with (tasks_dir / f"{task_id}.json").open("w", encoding="utf-8") as handle:
+            json.dump(task, handle, ensure_ascii=False, indent=2)
+        tasks.append(task)
+
+    return tasks, chunk_count
+
+
+def build_split(
+    samples: List[Dict[str, Any]],
+    output_dir: str | Path,
+    train_count: int,
+    eval_count: int,
+    *,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """Build a train/eval split with isolated corpora and a manifest."""
+    output_path = Path(output_dir)
+    _reset_output_dir(output_path, overwrite=overwrite)
+    train_samples, eval_samples = partition_samples(samples, train_count, eval_count)
+
+    train_tasks_dir = output_path / "tasks" / "train"
+    eval_tasks_dir = output_path / "tasks" / "eval"
+    train_corpus_dir = output_path / "corpus" / "train"
+    eval_corpus_dir = output_path / "corpus" / "eval"
+    for directory in (train_tasks_dir, eval_tasks_dir, train_corpus_dir, eval_corpus_dir):
+        directory.mkdir(parents=True, exist_ok=False)
+
+    print(f"Processing {len(train_samples)} training tasks in {output_path}...")
+    train_tasks, train_chunks = _write_tasks_and_corpus(
+        train_samples, train_tasks_dir, train_corpus_dir
+    )
+    print(f"Processing {len(eval_samples)} evaluation tasks in {output_path}...")
+    eval_tasks, eval_chunks = _write_tasks_and_corpus(eval_samples, eval_tasks_dir, eval_corpus_dir)
+
+    train_ids = {task["task_id"] for task in train_tasks}
+    eval_ids = {task["task_id"] for task in eval_tasks}
+    if not train_ids.isdisjoint(eval_ids):
+        raise AssertionError("Train and eval task IDs overlap")
+
+    all_citations_exist = all(
+        (train_corpus_dir / f"{citation}.json").exists()
+        for task in train_tasks
+        for citation in task["ground_truth_citations"]
+    ) and all(
+        (eval_corpus_dir / f"{citation}.json").exists()
+        for task in eval_tasks
+        for citation in task["ground_truth_citations"]
+    )
+    if not all_citations_exist:
+        raise AssertionError("A task references a missing citation chunk")
+
+    total_tasks = len(train_tasks) + len(eval_tasks)
+    stats = {
+        "split_name": output_path.name,
+        "total_tasks": total_tasks,
+        "train_tasks_count": len(train_tasks),
+        "eval_tasks_count": len(eval_tasks),
+        "train_fraction": len(train_tasks) / total_tasks if total_tasks else 0.0,
+        "eval_fraction": len(eval_tasks) / total_tasks if total_tasks else 0.0,
+        "train_corpus_chunks": train_chunks,
+        "eval_corpus_chunks": eval_chunks,
+        "overlap_verification": {
+            "task_id_overlap_detected": False,
+            "corpus_isolated_by_split": True,
+            "task_retrieval_scoped_by_reference_docs": True,
+            "all_citations_exist": True,
+        },
     }
-    
-    stats_file = os.path.join(output_dir, "stats.json")
-    with open(stats_file, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
-        
-    print(f"Saved stats to: {stats_file}")
+    with (output_path / "stats.json").open("w", encoding="utf-8") as handle:
+        json.dump(stats, handle, ensure_ascii=False, indent=2)
     return stats
 
 
-def main():
-    print("============================================================")
-    print("ResearchAgent-RL: HotpotQA Phase 1 Benchmark Setup")
-    print("============================================================")
-
-    # Set HF endpoint to mirror
-    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
+def _load_hotpotqa_validation() -> Any:
     try:
         from datasets import load_dataset
-    except ImportError:
-        print("[ERROR] 'datasets' library is not installed.")
-        print("Please install it first: python3 -m pip install datasets")
-        return
+    except ImportError as exc:
+        raise RuntimeError(
+            "The optional benchmark dependency is missing. Install it with "
+            "`python -m pip install 'datasets>=2.18'`."
+        ) from exc
 
-    print("Loading HotpotQA validation split (distractor setting) from HF Mirror...")
-    raw_dataset = load_dataset("hotpot_qa", "distractor", split="validation")
-    
-    # We need 20 tasks for debug split, and 130 tasks for mini split (150 tasks in total)
-    total_needed = 150
+    return load_dataset("hotpot_qa", "distractor", split="validation")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Create task-isolated 7:3 train/eval HotpotQA distractor benchmarks."
+    )
+    parser.add_argument("--output_root", default="data", help="Directory in which benchmark folders are created")
+    parser.add_argument("--seed", type=int, default=42, help="Dataset shuffle seed")
+    parser.add_argument("--debug_total", type=int, default=20, help="Total tasks in hotpotqa_debug")
+    parser.add_argument("--mini_total", type=int, default=130, help="Total tasks in hotpotqa_mini")
+    parser.add_argument("--overwrite", action="store_true", help="Replace existing generated output folders")
+    args = parser.parse_args()
+
+    if args.debug_total <= 0 or args.mini_total <= 0:
+        parser.error("--debug_total and --mini_total must be positive")
+
+    print("=" * 60)
+    print("ResearchAgent-RL: HotpotQA 7:3 Benchmark Setup")
+    print("=" * 60)
+    raw_dataset = _load_hotpotqa_validation()
+
+    total_needed = args.debug_total + args.mini_total
     if len(raw_dataset) < total_needed:
-        print(f"[ERROR] Dataset only has {len(raw_dataset)} items. Need at least {total_needed}.")
-        return
-
-    # Deterministic shuffle to make it reproducible across runs
+        raise RuntimeError(f"Dataset has {len(raw_dataset)} items; need {total_needed}")
     indices = list(range(len(raw_dataset)))
-    random.seed(42)
-    random.shuffle(indices)
-    
-    selected_indices = indices[:total_needed]
-    samples = [raw_dataset[i] for i in selected_indices]
+    random.Random(args.seed).shuffle(indices)
+    samples = [raw_dataset[index] for index in indices[:total_needed]]
 
-    # Partition: first 20 for debug, next 130 for mini (no overlap between splits)
-    debug_samples = samples[:20]
-    mini_samples = samples[20:]
+    debug_train = round(args.debug_total * TRAIN_FRACTION)
+    mini_train = round(args.mini_total * TRAIN_FRACTION)
+    debug_stats = build_split(
+        samples[: args.debug_total],
+        Path(args.output_root) / "hotpotqa_debug",
+        train_count=debug_train,
+        eval_count=args.debug_total - debug_train,
+        overwrite=args.overwrite,
+    )
+    mini_stats = build_split(
+        samples[args.debug_total :],
+        Path(args.output_root) / "hotpotqa_mini",
+        train_count=mini_train,
+        eval_count=args.mini_total - mini_train,
+        overwrite=args.overwrite,
+    )
 
-    # Build HotpotQA Debug: 14 Train, 6 Test
-    debug_stats = build_split(debug_samples, "data/hotpotqa_debug", train_count=14, test_count=6)
-    
-    # Build HotpotQA Mini: 100 Train, 30 Test
-    mini_stats = build_split(mini_samples, "data/hotpotqa_mini", train_count=100, test_count=30)
+    print("\n[SUCCESS] HotpotQA benchmark generation completed.")
+    print(
+        f"- Debug: {debug_stats['train_tasks_count']} train / "
+        f"{debug_stats['eval_tasks_count']} eval"
+    )
+    print(
+        f"- Mini: {mini_stats['train_tasks_count']} train / "
+        f"{mini_stats['eval_tasks_count']} eval"
+    )
 
-    print("\n[SUCCESS] Phase 1 HotpotQA Benchmark Generation Completed!")
-    print(f"- Debug split tasks: {debug_stats['train_tasks_count']} train / {debug_stats['test_tasks_count']} test")
-    print(f"- Mini split tasks: {mini_stats['train_tasks_count']} train / {mini_stats['test_tasks_count']} test")
-    print("============================================================")
 
 if __name__ == "__main__":
     main()
