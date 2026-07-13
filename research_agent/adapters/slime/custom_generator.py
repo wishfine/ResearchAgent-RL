@@ -71,7 +71,11 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
     is_mock = (actor_url == "mock")
     
     if not is_mock:
-        client = LLMClient(api_url=actor_url, api_key=getattr(args, "api_key", None))
+        client = LLMClient(
+            api_url=actor_url,
+            api_key=getattr(args, "api_key", None),
+            model=getattr(args, "model", "Qwen3.5-9B"),
+        )
 
     # 4. Initialize rollout and context collectors
     obs = env.reset(task)

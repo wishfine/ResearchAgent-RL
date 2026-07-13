@@ -32,8 +32,15 @@ class TestLLMClient(unittest.TestCase):
         }).encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = mock_response
 
-        client = LLMClient(api_url="http://localhost:8000/v1")
-        response = client.generate("test prompt", max_tokens=10, temperature=0.5, stop_tokens=["\n"])
+        client = LLMClient(api_url="http://localhost:8000/v1", model="Qwen3.5-9B")
+        response = client.generate(
+            "test prompt",
+            max_tokens=10,
+            temperature=0.5,
+            top_p=0.9,
+            model="per-request-model",
+            stop_tokens=["\n"],
+        )
         
         self.assertEqual(response, "Hello, world!")
         
@@ -47,6 +54,8 @@ class TestLLMClient(unittest.TestCase):
         self.assertEqual(req_body["prompt"], "test prompt")
         self.assertEqual(req_body["max_tokens"], 10)
         self.assertEqual(req_body["temperature"], 0.5)
+        self.assertEqual(req_body["top_p"], 0.9)
+        self.assertEqual(req_body["model"], "per-request-model")
         self.assertEqual(req_body["stop"], ["\n"])
 
     @patch("urllib.request.urlopen")

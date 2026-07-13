@@ -13,7 +13,10 @@ class RolloutSegment:
 
 
 class ConversationCollector:
-    def __init__(self, system_prompt: str = "You are a helpful research assistant equipped with SEARCH, READ, and ANSWER tools."):
+    def __init__(self, system_prompt: str = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
+For every turn, emit exactly one action and nothing outside the required JSON contract:
+<action>{\"tool\":\"SEARCH|READ|RERANK|CITE|ANSWER\",\"intent\":\"short intent\",\"params\":{...}}</action>
+Use SEARCH before READ, cite only READ chunks with CITE, and submit ANSWER when evidence is sufficient."""):
         self.segments: List[RolloutSegment] = []
         # Add system prompt as non-trainable
         self.segments.append(RolloutSegment(

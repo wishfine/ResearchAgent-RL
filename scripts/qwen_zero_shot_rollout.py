@@ -105,6 +105,7 @@ def visualize_mask(input_ids: list[int], loss_mask: list[int], max_len: int = 15
 def main():
     parser = argparse.ArgumentParser(description="Qwen Zero-shot Rollout Client")
     parser.add_argument("--model_url", type=str, default="http://localhost:8000/v1", help="URL of standard OpenAI completions API")
+    parser.add_argument("--model_name", type=str, default="Qwen3.5-9B", help="vLLM served model name")
     parser.add_argument("--api_key", type=str, default=None, help="Optional API key for authorization")
     parser.add_argument("--tasks_dir", type=str, default="data/searchqa_debug/tasks", help="Tasks folder path")
     parser.add_argument("--corpus_dir", type=str, default="data/searchqa_debug/corpus", help="Corpus folder path")
@@ -131,7 +132,7 @@ def main():
     env.register_tool(ReadTool())
     env.register_tool(AnswerTool())
     
-    client = LLMClient(api_url=args.model_url, api_key=args.api_key)
+    client = LLMClient(api_url=args.model_url, api_key=args.api_key, model=args.model_name)
     tokenizer = MockTokenizer()
 
     # 3. Rollout loop

@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 # NOTE: "INVALID" is an internal parser/env sentinel used for error handling and flow control.
 # It is NOT a learnable tool action for model post-training (SFT/RL should not learn to emit it).
-VALID_TOOLS = {"SEARCH", "READ", "ANSWER"}
+VALID_TOOLS = {"SEARCH", "READ", "RERANK", "CITE", "ANSWER"}
 
 @dataclass
 class Action:
@@ -29,6 +29,22 @@ class Action:
                 return False, "READ requires 'chunk_ids' param"
             if not isinstance(self.params["chunk_ids"], list):
                 return False, "READ 'chunk_ids' must be list"
+
+        elif self.tool == "RERANK":
+            required = ("query", "candidate_chunk_ids", "topk")
+            missing = [name for name in required if name not in self.params]
+            if missing:
+                return False, f"RERANK requires {', '.join(missing)}"
+            if not isinstance(self.params["candidate_chunk_ids"], list):
+                return False, "RERANK 'candidate_chunk_ids' must be list"
+            if not isinstance(self.params["topk"], int):
+                return False, "RERANK 'topk' must be int"
+
+        elif self.tool == "CITE":
+            if not isinstance(self.params.get("chunk_ids"), list):
+                return False, "CITE 'chunk_ids' must be list"
+            if not isinstance(self.params.get("claims"), list):
+                return False, "CITE 'claims' must be list"
 
         elif self.tool == "ANSWER":
             if "answer_text" not in self.params:
@@ -77,6 +93,35 @@ class Action:
             tool="ANSWER",
             intent="Submit final answer with citations",
             params={"answer_text": answer_text, "cited_chunk_ids": cited_chunk_ids},
+            reasoning=reasoning,
+        )
+
+    @classmethod
+    def rerank(
+        cls,
+        query: str,
+        candidate_chunk_ids: List[str],
+        topk: int = 5,
+        reasoning: Optional[str] = None,
+    ) -> Action:
+        return cls(
+            tool="RERANK",
+            intent=f"Rerank {len(candidate_chunk_ids)} candidates for relevant evidence",
+            params={"query": query, "candidate_chunk_ids": candidate_chunk_ids, "topk": topk},
+            reasoning=reasoning,
+        )
+
+    @classmethod
+    def cite(
+        cls,
+        chunk_ids: List[str],
+        claims: List[str],
+        reasoning: Optional[str] = None,
+    ) -> Action:
+        return cls(
+            tool="CITE",
+            intent=f"Cite {len(chunk_ids)} read chunks for {len(claims)} claims",
+            params={"chunk_ids": chunk_ids, "claims": claims},
             reasoning=reasoning,
         )
 

@@ -3,10 +3,26 @@ import urllib.request
 import urllib.error
 import json
 import re
+from dataclasses import dataclass
 from typing import List, Optional
 
+
+@dataclass(frozen=True)
+class LLMResponse:
+    """Content and accounting information returned by an OpenAI-compatible API."""
+
+    content: str
+    reasoning: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
 class LLMClient:
-    def __init__(self, api_url: str = "http://localhost:8000/v1", api_key: Optional[str] = None):
+    def __init__(
+        self,
+        api_url: str = "http://localhost:8000/v1",
+        api_key: Optional[str] = None,
+        model: str = "default",
+    ):
         """
         OpenAI-compatible HTTP completion client using standard python libraries.
         - Supports /v1/completions (preferred for agent prefix injection).
@@ -14,14 +30,36 @@ class LLMClient:
         """
         self.api_url = api_url.rstrip("/")
         self.api_key = api_key
+        self.model = model
 
     def generate(
         self,
         prompt: str,
         max_tokens: int = 512,
         temperature: float = 0.0,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None,
         stop_tokens: List[str] = None
     ) -> str:
+        return self.generate_response(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            model=model,
+            stop_tokens=stop_tokens,
+        ).content
+
+    def generate_response(
+        self,
+        prompt: str,
+        max_tokens: int = 512,
+        temperature: float = 0.0,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None,
+        stop_tokens: List[str] = None,
+    ) -> LLMResponse:
+        """Generate one turn and retain server-provided usage and reasoning fields."""
         # 1. Determine if we are using chat or raw completion
         is_chat = "chat/completions" in self.api_url or "/chat" in self.api_url
         
@@ -38,6 +76,8 @@ class LLMClient:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             }
+            if top_p is not None:
+                data["top_p"] = top_p
             if stop_tokens:
                 data["stop"] = stop_tokens
         else:
@@ -52,11 +92,12 @@ class LLMClient:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             }
+            if top_p is not None:
+                data["top_p"] = top_p
             if stop_tokens:
                 data["stop"] = stop_tokens
 
-        # Set default model key (ignored by most local servers, needed for strict API endpoints)
-        data["model"] = "default"
+        data["model"] = model or self.model
 
         req = urllib.request.Request(
             target_url,
@@ -71,9 +112,20 @@ class LLMClient:
             with urllib.request.urlopen(req, timeout=60) as response:
                 resp_data = json.loads(response.read().decode("utf-8"))
                 if is_chat:
-                    return resp_data["choices"][0]["message"]["content"]
+                    message = resp_data["choices"][0]["message"]
+                    content = message.get("content") or ""
+                    reasoning = message.get("reasoning") or message.get("reasoning_content") or ""
                 else:
-                    return resp_data["choices"][0]["text"]
+                    content = resp_data["choices"][0]["text"]
+                    reasoning = ""
+
+                usage = resp_data.get("usage") or {}
+                return LLMResponse(
+                    content=content,
+                    reasoning=reasoning,
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                )
         except urllib.error.HTTPError as e:
             err_content = e.read().decode("utf-8") if e else str(e)
             raise RuntimeError(f"LLM API HTTP Error {e.code}: {err_content}")

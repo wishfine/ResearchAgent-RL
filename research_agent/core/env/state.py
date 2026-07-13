@@ -112,6 +112,15 @@ class EnvState:
                 new_cited.append(cid)
         return new_cited
 
+    def rerank_candidates(self, ordered_ids: List[str]) -> None:
+        """Move the supplied candidate IDs to the front in the requested order."""
+        by_id = {candidate.chunk_id: candidate for candidate in self.candidate_chunks}
+        ranked = [by_id[chunk_id] for chunk_id in ordered_ids if chunk_id in by_id]
+        ranked_ids = {candidate.chunk_id for candidate in ranked}
+        self.candidate_chunks = ranked + [
+            candidate for candidate in self.candidate_chunks if candidate.chunk_id not in ranked_ids
+        ]
+
     def add_failed_search(self, query: str) -> None:
         if query not in self.failed_searches:
             self.failed_searches.append(query)

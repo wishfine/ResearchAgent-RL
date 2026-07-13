@@ -1,0 +1,16 @@
+# Python bytecode and local OS metadata
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local tooling
+.claude/settings.local.json
+
+# Generated rollouts, checkpoints, and benchmark splits
+outputs/*
+!outputs/eval_results/
+!outputs/eval_results/.gitkeep
+!outputs/trajectories/
+!outputs/trajectories/.gitkeep
+data/searchqa_debug/rollout_dataset.jsonl
+data/hotpotqa_*/

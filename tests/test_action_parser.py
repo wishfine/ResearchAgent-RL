@@ -21,7 +21,7 @@ class TestActionParser(unittest.TestCase):
         self.assertEqual(action.params["topk"], 5)
         self.assertEqual(action.reasoning, "I need to search for Canada flag.")
 
-    def test_parse_markdown_json(self):
+    def test_rejects_markdown_wrapped_json(self):
         text = """
         Thinking process here.
         <action>
@@ -34,11 +34,9 @@ class TestActionParser(unittest.TestCase):
         </action>
         """
         action = ActionParser.parse(text)
-        self.assertEqual(action.tool, "READ")
-        self.assertEqual(action.params["chunk_ids"], ["doc1_c1", "doc1_c2"])
-        self.assertEqual(action.reasoning, "Thinking process here.")
+        self.assertEqual(action.tool, "INVALID")
 
-    def test_parse_fallback_kv(self):
+    def test_rejects_key_value_fallback(self):
         text = """
         I will answer now.
         <action>
@@ -48,9 +46,22 @@ class TestActionParser(unittest.TestCase):
         </action>
         """
         action = ActionParser.parse(text)
-        self.assertEqual(action.tool, "ANSWER")
-        self.assertEqual(action.params["answer_text"], "Canada is the country.")
-        self.assertEqual(action.params["cited_chunk_ids"], ["doc1_c1"])
+        self.assertEqual(action.tool, "INVALID")
+
+    def test_rejects_json_outside_action_block(self):
+        text = '{"tool": "SEARCH", "params": {"query": "Canada"}}'
+        action = ActionParser.parse(text)
+        self.assertEqual(action.tool, "INVALID")
+
+    def test_rejects_unknown_tool_and_non_object_params(self):
+        unknown = ActionParser.parse(
+            '<action>{"tool": "DELETE", "params": {}}</action>'
+        )
+        malformed = ActionParser.parse(
+            '<action>{"tool": "SEARCH", "params": ["not", "an", "object"]}</action>'
+        )
+        self.assertEqual(unknown.tool, "INVALID")
+        self.assertEqual(malformed.tool, "INVALID")
 
     def test_parse_invalid(self):
         text = "This is some garbage output with no structured action."
