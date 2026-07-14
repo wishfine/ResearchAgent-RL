@@ -164,6 +164,21 @@ class TestSlimeAdapter(unittest.TestCase):
         # Expected: 2.0 - 0.03 = 1.97
         self.assertAlmostEqual(reward, 1.97, places=4)
 
+    def test_custom_reward_reads_verifier_fields_from_metadata(self):
+        """The Vime dataset converter deliberately keeps task fields in metadata."""
+        sample = {
+            "metadata": {
+                "ground_truth_answer": "Canada",
+                "ground_truth_citations": ["maple_leaf_flag"],
+                "final_answer": "Canada",
+                "cited_chunk_ids": ["maple_leaf_flag"],
+                "steps_count": 1,
+                "invalid_action_count": 0,
+            }
+        }
+        reward = self.loop.run_until_complete(custom_rm(self.args, sample))
+        self.assertAlmostEqual(reward, 1.99, places=4)
+
     def test_custom_reward_partial_match(self):
         sample = {
             "ground_truth_answer": "Canada",

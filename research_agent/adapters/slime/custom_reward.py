@@ -68,11 +68,15 @@ async def custom_rm(args: Any, sample: Any) -> float:
             return obj.get(key, default)
         return getattr(obj, key, default)
 
-    ground_truth_answer = get_val(sample, "ground_truth_answer", "")
-    ground_truth_citations = get_val(sample, "ground_truth_citations", [])
-    
-    # 2. Extract final answer and citations
     metadata = get_val(sample, "metadata", {}) or {}
+    # Dataset adapters keep task-level verifier fields in ``metadata``.  Keep
+    # the top-level lookup for backwards compatibility with older Slime data.
+    ground_truth_answer = get_val(sample, "ground_truth_answer", "") or metadata.get("ground_truth_answer", "")
+    ground_truth_citations = get_val(sample, "ground_truth_citations", []) or metadata.get(
+        "ground_truth_citations", []
+    )
+
+    # 2. Extract final answer and citations
     final_answer = metadata.get("final_answer", None)
     cited_ids = metadata.get("cited_chunk_ids", None)
     steps_count = metadata.get("steps_count", 0)
