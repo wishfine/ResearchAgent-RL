@@ -7,6 +7,8 @@ import json
 import os
 import random
 import sys
+import time
+import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -46,6 +48,37 @@ def chat_endpoint(model_url: str) -> str:
     return f"{url}/v1/chat/completions"
 
 
+def models_endpoint(model_url: str) -> str:
+    """Convert an OpenAI-compatible endpoint into its readiness endpoint."""
+    url = model_url.rstrip("/")
+    v1_position = url.find("/v1")
+    if v1_position >= 0:
+        return f"{url[:v1_position + 3]}/models"
+    return f"{url}/v1/models"
+
+
+def wait_for_model_server(model_url: str, timeout_sec: float, poll_interval_sec: float = 2.0) -> str:
+    """Wait for the vLLM model-list endpoint before beginning an evaluation."""
+    endpoint = models_endpoint(model_url)
+    deadline = time.monotonic() + timeout_sec
+    last_error = "not contacted"
+    while True:
+        try:
+            with urllib.request.urlopen(endpoint, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload.get("data"), list):
+                return endpoint
+            last_error = f"unexpected response: {payload!r}"
+        except Exception as exc:  # Readiness checks must also handle connection failures.
+            last_error = str(exc)
+
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Model API was not ready at {endpoint} within {timeout_sec:.0f}s: {last_error}"
+            )
+        time.sleep(min(poll_interval_sec, max(0.0, deadline - time.monotonic())))
+
+
 def make_env(corpus: CorpusStore, max_steps: int) -> ResearchEnv:
     env = ResearchEnv(corpus=corpus, max_steps=max_steps)
     env.register_tool(SearchTool())
@@ -64,6 +97,12 @@ def select_task_paths(task_paths: list[str], max_episodes: int, selection_seed: 
     return ordered_paths[:max_episodes]
 
 
+def write_records(path: str, records: list[dict]) -> None:
+    with open(path, "w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the LLM ResearchEnv baseline and save JSONL trajectories.")
     parser.add_argument("--model_url", default="http://127.0.0.1:8000/v1")
@@ -80,6 +119,17 @@ def main() -> int:
         default=None,
         help="Shuffle task files with this seed before selecting --max_episodes",
     )
+    parser.add_argument(
+        "--api_ready_timeout_sec",
+        type=float,
+        default=300.0,
+        help="Maximum time to wait for /v1/models before evaluation (0 checks once)",
+    )
+    parser.add_argument(
+        "--continue_on_actor_error",
+        action="store_true",
+        help="Continue after an LLM connection failure (not recommended for benchmark metrics)",
+    )
     parser.add_argument("--max_tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_p", type=float, default=1.0)
@@ -87,8 +137,18 @@ def main() -> int:
 
     if args.max_episodes <= 0:
         parser.error("--max_episodes must be positive")
+    if args.api_ready_timeout_sec < 0:
+        parser.error("--api_ready_timeout_sec must be non-negative")
     if not os.path.isdir(args.tasks_dir):
         parser.error(f"tasks directory does not exist: {args.tasks_dir}")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    try:
+        ready_endpoint = wait_for_model_server(args.model_url, args.api_ready_timeout_sec)
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    print(f"Model API ready: {ready_endpoint}")
 
     corpus = CorpusStore(args.corpus_dir)
     corpus.load()
@@ -107,7 +167,6 @@ def main() -> int:
         api_url=chat_endpoint(args.model_url), api_key=args.api_key, model=args.model_name
     )
     actor = LLMActor(client)
-    os.makedirs(args.output_dir, exist_ok=True)
     records: list[dict] = []
     for index, task_path in enumerate(task_paths, start=1):
         task = load_task(task_path)
@@ -126,11 +185,31 @@ def main() -> int:
             f"  reason={record['termination_reason']} steps={metrics['average_steps']:.0f} "
             f"answer_quality={metrics['answer_quality']:.3f} citation_f1={metrics['citation_f1']:.3f}"
         )
+        if record["termination_reason"] == "actor_error" and not args.continue_on_actor_error:
+            partial_path = os.path.join(args.output_dir, "trajectories.partial.jsonl")
+            write_records(partial_path, records)
+            failure_path = os.path.join(args.output_dir, "failure.json")
+            with open(failure_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "reason": "actor_error",
+                        "failed_task_id": task.task_id,
+                        "completed_episodes_before_failure": index - 1,
+                        "requested_episodes": len(task_paths),
+                    },
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            print(
+                "[ERROR] Evaluation stopped after an actor error; no metrics summary was written. "
+                f"Partial records: {partial_path}",
+                file=sys.stderr,
+            )
+            return 2
 
     trajectories_path = os.path.join(args.output_dir, "trajectories.jsonl")
-    with open(trajectories_path, "w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    write_records(trajectories_path, records)
     summary = aggregate_records(records)
     summary_path = os.path.join(args.output_dir, "metrics_summary.json")
     with open(summary_path, "w", encoding="utf-8") as handle:

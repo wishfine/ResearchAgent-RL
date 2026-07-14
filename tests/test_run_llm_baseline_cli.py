@@ -4,8 +4,9 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from scripts.run_llm_baseline import select_task_paths
+from scripts.run_llm_baseline import models_endpoint, select_task_paths, wait_for_model_server
 
 
 class TestRunLLMBaselineCLI(unittest.TestCase):
@@ -23,6 +24,7 @@ class TestRunLLMBaselineCLI(unittest.TestCase):
         self.assertIn("--model_name", result.stdout)
         self.assertIn("--output_dir", result.stdout)
         self.assertIn("--selection_seed", result.stdout)
+        self.assertIn("--api_ready_timeout_sec", result.stdout)
 
     def test_seeded_task_selection_is_reproducible(self):
         paths = [f"/tasks/{name}.json" for name in ("c", "a", "d", "b")]
@@ -33,6 +35,19 @@ class TestRunLLMBaselineCLI(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(first), 3)
         self.assertNotEqual(first, select_task_paths(paths, max_episodes=3, selection_seed=None))
+
+    def test_models_endpoint_and_readiness_check(self):
+        self.assertEqual(
+            models_endpoint("http://127.0.0.1:8000/v1/chat/completions"),
+            "http://127.0.0.1:8000/v1/models",
+        )
+        response = MagicMock()
+        response.read.return_value = b'{"data": []}'
+        mocked_open = MagicMock()
+        mocked_open.return_value.__enter__.return_value = response
+        with patch("scripts.run_llm_baseline.urllib.request.urlopen", mocked_open):
+            endpoint = wait_for_model_server("http://127.0.0.1:8000/v1", timeout_sec=0)
+        self.assertEqual(endpoint, "http://127.0.0.1:8000/v1/models")
 
 
 if __name__ == "__main__":
