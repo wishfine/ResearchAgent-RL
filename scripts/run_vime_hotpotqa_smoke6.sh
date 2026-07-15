@@ -93,6 +93,24 @@ source scripts/models/qwen3.5-9B.sh
   --num-gpus 6 \
   --disable-usage-stats
 
+# `ray start` returns before the dashboard job-submission endpoint is always
+# accepting connections.  Wait rather than racing `ray job submit` below.
+dashboard_ready=0
+for _ in $(seq 1 60); do
+  if curl -fsS "http://127.0.0.1:$RAY_DASHBOARD_PORT/api/version" >/dev/null; then
+    dashboard_ready=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$dashboard_ready" -ne 1 ]]; then
+  echo "Ray dashboard did not become ready within 60 seconds." >&2
+  find "$RAY_TMPDIR/ray/session_latest/logs" -maxdepth 1 -type f \
+    \( -name 'dashboard*.log' -o -name 'dashboard*.err' \) -print -exec tail -n 80 {} \; \
+    2>/dev/null || true
+  exit 1
+fi
+
 RUNTIME_ENV_JSON="$(
   "$TRAIN_ENV/bin/python" - <<PY
 import json
