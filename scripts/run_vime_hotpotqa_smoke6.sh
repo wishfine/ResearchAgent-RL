@@ -54,17 +54,19 @@ for gpu in "${GPU_LIST[@]}"; do
   [[ -z "$gpu_processes" ]] || fail "GPU $gpu is busy (PID(s): $gpu_processes). Stop or relocate that workload before launching Vime."
 done
 
-mkdir -p "$RUN_DIR" "$BASE/ray"
-
 NVIDIA_LIBRARY_PATH="$(find "$SITE/nvidia" -type d -name lib -print | paste -sd: -)"
 export CUDA_VISIBLE_DEVICES="$GPU_IDS"
 export CUDA_HOME CUDA_PATH="$CUDA_HOME"
 export PATH="$CUDA_HOME/bin:$PATH"
 export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$NVIDIA_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONPATH="$PROJECT_ROOT:$MEGATRON_ROOT:$VIME_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-export RAY_TMPDIR="$BASE/ray"
+# Ray embeds its session name below this directory in Unix-socket paths.  Keep
+# it short: the kernel limit is 107 bytes and "$BASE/ray" is too long here.
+export RAY_TMPDIR="${RAY_TMPDIR:-/data/$USER/ray}"
 export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
+
+mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 
 "$TRAIN_ENV/bin/python" - <<'PY'
 import ray
