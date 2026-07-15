@@ -46,6 +46,14 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ -d "$CORPUS_DIR" ]] || fail "Corpus not found: $CORPUS_DIR"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
 
+for gpu in "${GPU_LIST[@]}"; do
+  gpu_processes="$(
+    nvidia-smi -i "$gpu" --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null \
+      | awk 'NF'
+  )"
+  [[ -z "$gpu_processes" ]] || fail "GPU $gpu is busy (PID(s): $gpu_processes). Stop or relocate that workload before launching Vime."
+done
+
 mkdir -p "$RUN_DIR" "$BASE/ray"
 
 NVIDIA_LIBRARY_PATH="$(find "$SITE/nvidia" -type d -name lib -print | paste -sd: -)"
