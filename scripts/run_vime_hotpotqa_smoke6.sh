@@ -93,15 +93,19 @@ mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 import aiohttp_cors
 import opencensus
 import opentelemetry.exporter.prometheus
+import pylatexenc
 import ray
 import transformer_engine.pytorch
 import vime
 from torch_memory_saver import torch_memory_saver
+from vime.rollout.fully_async_rollout import generate_rollout_fully_async
+from research_agent.adapters.vime.custom_rollout import custom_generate, custom_rm
 
 print("preflight imports: OK")
 print("ray:", ray.__version__)
 print("vime:", vime.__file__)
 print("torch_memory_saver:", torch_memory_saver.__class__.__module__)
+print("fully async rollout and ResearchAgent hooks: OK")
 PY
 
 if "$TRAIN_ENV/bin/ray" status --address="127.0.0.1:$RAY_PORT" >/dev/null 2>&1; then
