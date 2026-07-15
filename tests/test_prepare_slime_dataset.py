@@ -35,7 +35,10 @@ class TestPrepareSlimeDataset(unittest.TestCase):
             output_records = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(len(output_records), 2)
             self.assertEqual(output_records[0]["label"], output_records[0]["metadata"]["ground_truth_answer"])
-            self.assertEqual(output_records[0]["prompt"], output_records[0]["metadata"]["user_query"])
+            self.assertEqual(
+                output_records[0]["prompt"],
+                [{"role": "user", "content": output_records[0]["metadata"]["user_query"]}],
+            )
             self.assertTrue(output_records[0]["metadata"]["reference_docs"])
             saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(saved_manifest["records"], 2)

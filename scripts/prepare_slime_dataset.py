@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert ResearchAgent task JSON files into Slime prompt JSONL.
+"""Convert ResearchAgent task JSON files into Vime-compatible prompt JSONL.
 
 The output keeps the verifier fields in ``metadata`` so a custom Slime
 generation/reward plugin can reconstruct a task-local ResearchEnv rollout.
@@ -65,9 +65,12 @@ def build_records(
             "reference_docs": raw["reference_docs"],
         }
         record = {
-            # A string prompt avoids ambiguity at the Slime input boundary;
-            # custom_generate builds the tool-use system prompt itself.
-            "prompt": raw["user_query"],
+            # Qwen3.5 exposes a multimodal processor even for text-only
+            # rollouts.  Vime consequently requires a conversation-form
+            # prompt (rather than a bare string) while loading this dataset.
+            # The project custom_generate hook still constructs the actual
+            # tool-use transcript from the metadata at rollout time.
+            "prompt": [{"role": "user", "content": raw["user_query"]}],
             "label": raw["ground_truth_answer"],
             "metadata": metadata,
         }
@@ -76,7 +79,7 @@ def build_records(
         digest.update(b"\n")
 
     manifest = {
-        "format": "research-agent-slime-v1",
+        "format": "research-agent-vime-v2",
         "tasks_dir": str(Path(tasks_dir).resolve()),
         "records": len(records),
         "selection_seed": selection_seed,
