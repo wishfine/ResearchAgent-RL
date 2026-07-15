@@ -221,6 +221,10 @@ OPTIMIZER_ARGS=(
 VLLM_ARGS=(
   --rollout-num-gpus-per-engine 2
   --vllm-gpu-memory-utilization 0.70
+  # fully_async_rollout uses this value as its number of in-flight sample
+  # groups.  Keep the smoke test to one group (two samples) rather than the
+  # framework default of 512 groups.
+  --vllm-server-concurrency 1
 )
 
 MISC_ARGS=(
