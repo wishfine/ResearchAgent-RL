@@ -125,6 +125,17 @@ if "$TRAIN_ENV/bin/ray" status --address="127.0.0.1:$RAY_PORT" >/dev/null 2>&1; 
   fail "A Ray cluster is already listening on port $RAY_PORT. Stop only the intended cluster first: $TRAIN_ENV/bin/ray stop --force"
 fi
 
+ray_started=0
+cleanup_ray() {
+  local status=$?
+  if [[ "$ray_started" -eq 1 ]]; then
+    echo "Stopping Ray cluster started by this launcher..." >&2
+    RAY_TMPDIR="$RAY_TMPDIR" "$TRAIN_ENV/bin/ray" stop --force >/dev/null 2>&1 || true
+  fi
+  return "$status"
+}
+trap cleanup_ray EXIT
+
 cd "$VIME_ROOT"
 # Shell array supplied by Vime for the exact Qwen3.5-9B architecture.
 source scripts/models/qwen3.5-9B.sh
@@ -135,6 +146,7 @@ source scripts/models/qwen3.5-9B.sh
   --dashboard-port "$RAY_DASHBOARD_PORT" \
   --num-gpus 6 \
   --disable-usage-stats
+ray_started=1
 
 # `ray start` returns before the dashboard job-submission endpoint is always
 # accepting connections.  Wait rather than racing `ray job submit` below.
