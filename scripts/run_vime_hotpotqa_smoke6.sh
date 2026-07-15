@@ -30,6 +30,8 @@ RUN_DIR="${RUN_DIR:-$BASE/outputs/vime_hotpotqa_smoke6_$(date +%Y%m%d_%H%M%S)}"
 NUM_ROLLOUT="${NUM_ROLLOUT:-1}"
 ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-1}"
 N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-2}"
+MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
+GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-2}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-9999}"
 VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 
@@ -55,7 +57,10 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
 [[ "$NUM_ROLLOUT" =~ ^[1-9][0-9]*$ ]] || fail "NUM_ROLLOUT must be a positive integer"
 [[ "$ROLLOUT_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "ROLLOUT_BATCH_SIZE must be a positive integer"
-[[ "$N_SAMPLES_PER_PROMPT" =~ ^[2-9][0-9]*$ ]] || fail "N_SAMPLES_PER_PROMPT must be at least 2 for GRPO"
+[[ "$N_SAMPLES_PER_PROMPT" =~ ^([2-9]|[1-9][0-9]+)$ ]] || fail "N_SAMPLES_PER_PROMPT must be at least 2 for GRPO"
+[[ "$MICRO_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "MICRO_BATCH_SIZE must be a positive integer"
+[[ "$GLOBAL_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "GLOBAL_BATCH_SIZE must be a positive integer"
+(( GLOBAL_BATCH_SIZE >= N_SAMPLES_PER_PROMPT )) || fail "GLOBAL_BATCH_SIZE must cover N_SAMPLES_PER_PROMPT"
 [[ "$SAVE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail "SAVE_INTERVAL must be a positive integer"
 [[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
 
@@ -205,8 +210,8 @@ ROLLOUT_ARGS=(
   --n-samples-per-prompt "$N_SAMPLES_PER_PROMPT"
   --rollout-max-response-len 256
   --rollout-temperature 1.0
-  --micro-batch-size 1
-  --global-batch-size 2
+  --micro-batch-size "$MICRO_BATCH_SIZE"
+  --global-batch-size "$GLOBAL_BATCH_SIZE"
   --balance-data
 )
 
