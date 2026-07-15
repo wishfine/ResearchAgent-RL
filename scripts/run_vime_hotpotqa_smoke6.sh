@@ -25,6 +25,14 @@ PROMPT_DATA="${PROMPT_DATA:-$BASE/slime_data/hotpotqa_train_7k.jsonl}"
 CORPUS_DIR="${CORPUS_DIR:-$BASE/hotpotqa_7k3k/corpus/train}"
 RUN_DIR="${RUN_DIR:-$BASE/outputs/vime_hotpotqa_smoke6_$(date +%Y%m%d_%H%M%S)}"
 
+# Keep the default to one update for a cheap end-to-end smoke test.  Larger
+# validation or training runs override these explicitly through the launcher.
+NUM_ROLLOUT="${NUM_ROLLOUT:-1}"
+ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-1}"
+N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-2}"
+SAVE_INTERVAL="${SAVE_INTERVAL:-9999}"
+VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
+
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
 ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
@@ -45,6 +53,11 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ -f "$PROMPT_DATA" ]] || fail "Prompt data not found: $PROMPT_DATA"
 [[ -d "$CORPUS_DIR" ]] || fail "Corpus not found: $CORPUS_DIR"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
+[[ "$NUM_ROLLOUT" =~ ^[1-9][0-9]*$ ]] || fail "NUM_ROLLOUT must be a positive integer"
+[[ "$ROLLOUT_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "ROLLOUT_BATCH_SIZE must be a positive integer"
+[[ "$N_SAMPLES_PER_PROMPT" =~ ^[2-9][0-9]*$ ]] || fail "N_SAMPLES_PER_PROMPT must be at least 2 for GRPO"
+[[ "$SAVE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail "SAVE_INTERVAL must be a positive integer"
+[[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -163,7 +176,7 @@ CKPT_ARGS=(
   --hf-checkpoint "$HF_CHECKPOINT"
   --ref-load "$REF_CHECKPOINT"
   --save "$RUN_DIR/checkpoints"
-  --save-interval 9999
+  --save-interval "$SAVE_INTERVAL"
 )
 
 ROLLOUT_ARGS=(
@@ -175,9 +188,9 @@ ROLLOUT_ARGS=(
   --label-key label
   --metadata-key metadata
   --rollout-shuffle
-  --num-rollout 1
-  --rollout-batch-size 1
-  --n-samples-per-prompt 2
+  --num-rollout "$NUM_ROLLOUT"
+  --rollout-batch-size "$ROLLOUT_BATCH_SIZE"
+  --n-samples-per-prompt "$N_SAMPLES_PER_PROMPT"
   --rollout-max-response-len 256
   --rollout-temperature 1.0
   --micro-batch-size 1
@@ -224,7 +237,7 @@ VLLM_ARGS=(
   # fully_async_rollout uses this value as its number of in-flight sample
   # groups.  Keep the smoke test to one group (two samples) rather than the
   # framework default of 512 groups.
-  --vllm-server-concurrency 1
+  --vllm-server-concurrency "$VLLM_SERVER_CONCURRENCY"
 )
 
 MISC_ARGS=(
