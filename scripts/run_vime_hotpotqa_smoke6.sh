@@ -46,6 +46,27 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ -d "$CORPUS_DIR" ]] || fail "Corpus not found: $CORPUS_DIR"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
 
+"$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    first_record = json.loads(next(line for line in handle if line.strip()))
+prompt = first_record.get("prompt")
+if not (
+    isinstance(prompt, list)
+    and prompt
+    and isinstance(prompt[0], dict)
+    and prompt[0].get("role") == "user"
+    and isinstance(prompt[0].get("content"), str)
+):
+    raise SystemExit(
+        "Vime/Qwen3.5 requires a chat-message prompt. Regenerate the dataset with "
+        "scripts/prepare_slime_dataset.py from commit a03558f or newer."
+    )
+print("prompt dataset format: Vime chat-message OK")
+PY
+
 for gpu in "${GPU_LIST[@]}"; do
   gpu_processes="$(
     nvidia-smi -i "$gpu" --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null \
