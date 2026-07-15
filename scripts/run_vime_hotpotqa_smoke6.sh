@@ -69,6 +69,9 @@ export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 
 "$TRAIN_ENV/bin/python" - <<'PY'
+import aiohttp_cors
+import opencensus
+import opentelemetry.exporter.prometheus
 import ray
 import transformer_engine.pytorch
 import vime
