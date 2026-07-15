@@ -75,10 +75,12 @@ import opentelemetry.exporter.prometheus
 import ray
 import transformer_engine.pytorch
 import vime
+from torch_memory_saver import torch_memory_saver
 
 print("preflight imports: OK")
 print("ray:", ray.__version__)
 print("vime:", vime.__file__)
+print("torch_memory_saver:", torch_memory_saver.__class__.__module__)
 PY
 
 if "$TRAIN_ENV/bin/ray" status --address="127.0.0.1:$RAY_PORT" >/dev/null 2>&1; then
