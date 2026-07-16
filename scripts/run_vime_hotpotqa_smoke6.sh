@@ -38,6 +38,10 @@ VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 # controlled weight-sync diagnosis without changing the model, topology, or
 # NCCL transport.
 VLLM_WEIGHT_SYNC_PACKED="${VLLM_WEIGHT_SYNC_PACKED:-1}"
+# Qwen3.5 has both Vime's legacy raw converter and an mbridge converter.  Keep
+# the stock raw converter as default, while permitting a one-variable sync
+# comparison when investigating vLLM reload mismatches.
+MEGATRON_TO_HF_MODE="${MEGATRON_TO_HF_MODE:-raw}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -68,6 +72,8 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ "$SAVE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail "SAVE_INTERVAL must be a positive integer"
 [[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
 [[ "$VLLM_WEIGHT_SYNC_PACKED" =~ ^[01]$ ]] || fail "VLLM_WEIGHT_SYNC_PACKED must be 0 or 1"
+[[ "$MEGATRON_TO_HF_MODE" == "raw" || "$MEGATRON_TO_HF_MODE" == "bridge" ]] || \
+  fail "MEGATRON_TO_HF_MODE must be raw or bridge"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -197,6 +203,7 @@ PY
 CKPT_ARGS=(
   --hf-checkpoint "$HF_CHECKPOINT"
   --ref-load "$REF_CHECKPOINT"
+  --megatron-to-hf-mode "$MEGATRON_TO_HF_MODE"
   --save "$RUN_DIR/checkpoints"
   --save-interval "$SAVE_INTERVAL"
 )
@@ -269,6 +276,7 @@ else
 fi
 
 echo "vLLM weight sync packed: $VLLM_WEIGHT_SYNC_PACKED"
+echo "Megatron-to-HF conversion mode: $MEGATRON_TO_HF_MODE"
 
 MISC_ARGS=(
   --attention-dropout 0.0
