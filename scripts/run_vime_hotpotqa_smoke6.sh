@@ -42,6 +42,10 @@ VLLM_WEIGHT_SYNC_PACKED="${VLLM_WEIGHT_SYNC_PACKED:-1}"
 # the stock raw converter as default, while permitting a one-variable sync
 # comparison when investigating vLLM reload mismatches.
 MEGATRON_TO_HF_MODE="${MEGATRON_TO_HF_MODE:-raw}"
+# Keep normal runs at vLLM's standard verbosity.  A controlled weight-sync
+# diagnosis can set this to DEBUG, which makes AutoWeightsLoader report the
+# exact tensors it accepts after start_weight_update.
+VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-INFO}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -74,6 +78,8 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ "$VLLM_WEIGHT_SYNC_PACKED" =~ ^[01]$ ]] || fail "VLLM_WEIGHT_SYNC_PACKED must be 0 or 1"
 [[ "$MEGATRON_TO_HF_MODE" == "raw" || "$MEGATRON_TO_HF_MODE" == "bridge" ]] || \
   fail "MEGATRON_TO_HF_MODE must be raw or bridge"
+[[ "$VLLM_LOGGING_LEVEL" =~ ^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$ ]] || \
+  fail "VLLM_LOGGING_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, or CRITICAL"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -115,6 +121,7 @@ export PYTHONPATH="$PROJECT_ROOT:$MEGATRON_ROOT:$VIME_ROOT${PYTHONPATH:+:$PYTHON
 export RAY_TMPDIR="${RAY_TMPDIR:-/data/$USER/ray}"
 export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
+export VLLM_LOGGING_LEVEL
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 
@@ -196,6 +203,7 @@ print(json.dumps({"env_vars": {
     "NCCL_NVLS_ENABLE": "0",
     "RESEARCH_AGENT_CORPUS_DIR": os.environ["RESEARCH_AGENT_CORPUS_DIR"],
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
+    "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
 }}))
 PY
 )"
@@ -277,6 +285,7 @@ fi
 
 echo "vLLM weight sync packed: $VLLM_WEIGHT_SYNC_PACKED"
 echo "Megatron-to-HF conversion mode: $MEGATRON_TO_HF_MODE"
+echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
 
 MISC_ARGS=(
   --attention-dropout 0.0
