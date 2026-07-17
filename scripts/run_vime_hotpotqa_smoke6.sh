@@ -52,6 +52,13 @@ VIME_WEIGHT_SYNC_TRACE="${VIME_WEIGHT_SYNC_TRACE:-0}"
 # Diagnostic-only alternate name convention.  The raw Vime converter emits
 # canonical HF names; this can test vLLM-native names without changing tensors.
 VIME_WEIGHT_SYNC_NAME_MODE="${VIME_WEIGHT_SYNC_NAME_MODE:-hf}"
+# The default NCCL transport is fast but the installed vLLM layerwise reload
+# path does not currently reload Qwen3.5 language weights.  Vime's disk
+# transport writes a standard HF checkpoint on the shared filesystem and uses
+# vLLM's full checkpoint reload instead.
+UPDATE_WEIGHT_TRANSPORT="${UPDATE_WEIGHT_TRANSPORT:-nccl}"
+UPDATE_WEIGHT_DISK_DIR="${UPDATE_WEIGHT_DISK_DIR:-$RUN_DIR/weight_sync}"
+UPDATE_WEIGHT_DISK_KEEP_FILES="${UPDATE_WEIGHT_DISK_KEEP_FILES:-0}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -91,6 +98,10 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
   fail "VIME_WEIGHT_SYNC_NAME_MODE must be hf or vllm_native"
 [[ "$VIME_WEIGHT_SYNC_NAME_MODE" == "hf" || "$VIME_WEIGHT_SYNC_TRACE" == "1" ]] || \
   fail "VIME_WEIGHT_SYNC_NAME_MODE=vllm_native requires VIME_WEIGHT_SYNC_TRACE=1"
+[[ "$UPDATE_WEIGHT_TRANSPORT" == "nccl" || "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]] || \
+  fail "UPDATE_WEIGHT_TRANSPORT must be nccl or disk"
+[[ "$UPDATE_WEIGHT_DISK_KEEP_FILES" =~ ^[01]$ ]] || \
+  fail "UPDATE_WEIGHT_DISK_KEEP_FILES must be 0 or 1"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -136,6 +147,9 @@ export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
+if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
+  mkdir -p "$UPDATE_WEIGHT_DISK_DIR"
+fi
 
 RUNTIME_PYTHONPATH="$PYTHONPATH"
 if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" ]]; then
@@ -302,6 +316,17 @@ VLLM_ARGS=(
   --vllm-server-concurrency "$VLLM_SERVER_CONCURRENCY"
 )
 
+WEIGHT_SYNC_ARGS=(
+  --update-weight-mode full
+  --update-weight-transport "$UPDATE_WEIGHT_TRANSPORT"
+)
+if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
+  WEIGHT_SYNC_ARGS+=(--update-weight-disk-dir "$UPDATE_WEIGHT_DISK_DIR")
+  if [[ "$UPDATE_WEIGHT_DISK_KEEP_FILES" == "1" ]]; then
+    WEIGHT_SYNC_ARGS+=(--update-weight-disk-keep-files)
+  fi
+fi
+
 if [[ "$VLLM_WEIGHT_SYNC_PACKED" == "1" ]]; then
   VLLM_ARGS+=(--vllm-weight-sync-packed)
 else
@@ -313,6 +338,10 @@ echo "Megatron-to-HF conversion mode: $MEGATRON_TO_HF_MODE"
 echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
 echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
 echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
+echo "Vime weight-sync transport: $UPDATE_WEIGHT_TRANSPORT"
+if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
+  echo "Vime weight-sync disk directory: $UPDATE_WEIGHT_DISK_DIR"
+fi
 
 MISC_ARGS=(
   --attention-dropout 0.0
@@ -339,5 +368,6 @@ set -x
   "${GRPO_ARGS[@]}" \
   "${PERF_ARGS[@]}" \
   "${VLLM_ARGS[@]}" \
+  "${WEIGHT_SYNC_ARGS[@]}" \
   "${MISC_ARGS[@]}" \
   2>&1 | tee "$RUN_DIR/launch.log"
