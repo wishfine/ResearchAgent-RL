@@ -145,6 +145,7 @@ export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
+export VIME_DISK_WEIGHT_SYNC_COMPAT="${VIME_DISK_WEIGHT_SYNC_COMPAT:-1}"
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
@@ -152,10 +153,15 @@ if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
 fi
 
 RUNTIME_PYTHONPATH="$PYTHONPATH"
-if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" ]]; then
-  TRACE_SITE_DIR="$RUN_DIR/vime_weight_sync_trace_site"
-  mkdir -p "$TRACE_SITE_DIR"
-  cp "$PROJECT_ROOT/scripts/vime_weight_sync_trace_sitecustomize.py" "$TRACE_SITE_DIR/sitecustomize.py"
+# The Vime checkout calls the recent disk-reload RPC signature with a
+# ``weight_version`` keyword.  The installed vLLM 0.23 rollout engine exposes
+# the older signature, which accepts only ``model_path``.  Load a startup hook
+# for disk runs to bridge that one-argument API difference.  The same hook also
+# carries the optional NCCL name tracer, so both diagnostics can coexist.
+if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" || "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
+  RUNTIME_SITE_DIR="$RUN_DIR/vime_runtime_site"
+  mkdir -p "$RUNTIME_SITE_DIR"
+  cp "$PROJECT_ROOT/scripts/vime_weight_sync_trace_sitecustomize.py" "$RUNTIME_SITE_DIR/sitecustomize.py"
   # Do not expose sitecustomize to the launcher itself: the JSON-producing
   # subprocess below must emit JSON and nothing else. Ray workers receive this
   # path through runtime_env instead.
@@ -243,6 +249,7 @@ print(json.dumps({"env_vars": {
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
     "VIME_WEIGHT_SYNC_NAME_MODE": os.environ["VIME_WEIGHT_SYNC_NAME_MODE"],
+    "VIME_DISK_WEIGHT_SYNC_COMPAT": os.environ["VIME_DISK_WEIGHT_SYNC_COMPAT"],
 }}))
 PY
 )"
