@@ -129,11 +129,15 @@ export VLLM_LOGGING_LEVEL
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 
+RUNTIME_PYTHONPATH="$PYTHONPATH"
 if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" ]]; then
   TRACE_SITE_DIR="$RUN_DIR/vime_weight_sync_trace_site"
   mkdir -p "$TRACE_SITE_DIR"
   cp "$PROJECT_ROOT/scripts/vime_weight_sync_trace_sitecustomize.py" "$TRACE_SITE_DIR/sitecustomize.py"
-  export PYTHONPATH="$TRACE_SITE_DIR:$PYTHONPATH"
+  # Do not expose sitecustomize to the launcher itself: the JSON-producing
+  # subprocess below must emit JSON and nothing else. Ray workers receive this
+  # path through runtime_env instead.
+  RUNTIME_PYTHONPATH="$TRACE_SITE_DIR:$RUNTIME_PYTHONPATH"
 fi
 
 "$TRAIN_ENV/bin/python" - <<'PY'
@@ -201,12 +205,12 @@ if [[ "$dashboard_ready" -ne 1 ]]; then
 fi
 
 RUNTIME_ENV_JSON="$(
-  "$TRAIN_ENV/bin/python" - <<PY
+  PYTHONPATH="" "$TRAIN_ENV/bin/python" - <<PY
 import json
 import os
 
 print(json.dumps({"env_vars": {
-    "PYTHONPATH": os.environ["PYTHONPATH"],
+    "PYTHONPATH": "${RUNTIME_PYTHONPATH}",
     "LD_LIBRARY_PATH": os.environ["LD_LIBRARY_PATH"],
     "CUDA_HOME": os.environ["CUDA_HOME"],
     "CUDA_PATH": os.environ["CUDA_PATH"],

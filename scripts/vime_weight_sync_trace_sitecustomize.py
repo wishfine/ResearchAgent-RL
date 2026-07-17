@@ -40,7 +40,6 @@ def _install() -> None:
 
     traced_update_weights_from_distributed._research_agent_trace = True
     module.update_weights_from_distributed = traced_update_weights_from_distributed
-    print("[RA_WEIGHT_SYNC_TRAINER] trace hook installed", flush=True)
 
 
 if os.environ.get("VIME_WEIGHT_SYNC_TRACE") == "1":
