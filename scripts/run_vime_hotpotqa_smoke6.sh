@@ -46,6 +46,9 @@ MEGATRON_TO_HF_MODE="${MEGATRON_TO_HF_MODE:-raw}"
 # diagnosis can set this to DEBUG, which makes AutoWeightsLoader report the
 # exact tensors it accepts after start_weight_update.
 VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-INFO}"
+# Trace the names crossing the trainer-to-vLLM NCCL boundary. This is opt-in
+# and uses a temporary sitecustomize module, so it never edits Vime's source.
+VIME_WEIGHT_SYNC_TRACE="${VIME_WEIGHT_SYNC_TRACE:-0}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -80,6 +83,7 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
   fail "MEGATRON_TO_HF_MODE must be raw or bridge"
 [[ "$VLLM_LOGGING_LEVEL" =~ ^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$ ]] || \
   fail "VLLM_LOGGING_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, or CRITICAL"
+[[ "$VIME_WEIGHT_SYNC_TRACE" =~ ^[01]$ ]] || fail "VIME_WEIGHT_SYNC_TRACE must be 0 or 1"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -124,6 +128,13 @@ export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 export VLLM_LOGGING_LEVEL
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
+
+if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" ]]; then
+  TRACE_SITE_DIR="$RUN_DIR/vime_weight_sync_trace_site"
+  mkdir -p "$TRACE_SITE_DIR"
+  cp "$PROJECT_ROOT/scripts/vime_weight_sync_trace_sitecustomize.py" "$TRACE_SITE_DIR/sitecustomize.py"
+  export PYTHONPATH="$TRACE_SITE_DIR:$PYTHONPATH"
+fi
 
 "$TRAIN_ENV/bin/python" - <<'PY'
 import aiohttp_cors
@@ -204,6 +215,7 @@ print(json.dumps({"env_vars": {
     "RESEARCH_AGENT_CORPUS_DIR": os.environ["RESEARCH_AGENT_CORPUS_DIR"],
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
+    "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
 }}))
 PY
 )"
@@ -286,6 +298,7 @@ fi
 echo "vLLM weight sync packed: $VLLM_WEIGHT_SYNC_PACKED"
 echo "Megatron-to-HF conversion mode: $MEGATRON_TO_HF_MODE"
 echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
+echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
 
 MISC_ARGS=(
   --attention-dropout 0.0
