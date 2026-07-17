@@ -34,9 +34,30 @@ def _install() -> None:
         tensors = kwargs.get("converted_named_tensors")
         if tensors is None and len(args) >= 5:
             tensors = args[4]
-        names = [name for name, _ in tensors] if tensors is not None else []
-        print(f"[RA_WEIGHT_SYNC_TRAINER] {_summarize(names)}", flush=True)
-        return original(*args, **kwargs)
+        raw_tensors = list(tensors or [])
+        raw_names = [name for name, _ in raw_tensors]
+        mode = os.environ.get("VIME_WEIGHT_SYNC_NAME_MODE", "hf")
+        if mode == "vllm_native":
+            mapped_tensors = []
+            for name, tensor in raw_tensors:
+                if name.startswith("model.language_model."):
+                    name = "language_model.model." + name.removeprefix("model.language_model.")
+                elif name.startswith("lm_head."):
+                    name = "language_model." + name
+                mapped_tensors.append((name, tensor))
+        else:
+            mapped_tensors = raw_tensors
+
+        sent_names = [name for name, _ in mapped_tensors]
+        print(
+            "[RA_WEIGHT_SYNC_TRAINER] "
+            f"mode={mode} raw=({_summarize(raw_names)}) sent=({_summarize(sent_names)})",
+            flush=True,
+        )
+        if "converted_named_tensors" in kwargs:
+            kwargs["converted_named_tensors"] = mapped_tensors
+            return original(*args, **kwargs)
+        return original(*args[:4], mapped_tensors, *args[5:], **kwargs)
 
     traced_update_weights_from_distributed._research_agent_trace = True
     module.update_weights_from_distributed = traced_update_weights_from_distributed

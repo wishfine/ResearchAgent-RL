@@ -49,6 +49,9 @@ VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-INFO}"
 # Trace the names crossing the trainer-to-vLLM NCCL boundary. This is opt-in
 # and uses a temporary sitecustomize module, so it never edits Vime's source.
 VIME_WEIGHT_SYNC_TRACE="${VIME_WEIGHT_SYNC_TRACE:-0}"
+# Diagnostic-only alternate name convention.  The raw Vime converter emits
+# canonical HF names; this can test vLLM-native names without changing tensors.
+VIME_WEIGHT_SYNC_NAME_MODE="${VIME_WEIGHT_SYNC_NAME_MODE:-hf}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -84,6 +87,10 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ "$VLLM_LOGGING_LEVEL" =~ ^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$ ]] || \
   fail "VLLM_LOGGING_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, or CRITICAL"
 [[ "$VIME_WEIGHT_SYNC_TRACE" =~ ^[01]$ ]] || fail "VIME_WEIGHT_SYNC_TRACE must be 0 or 1"
+[[ "$VIME_WEIGHT_SYNC_NAME_MODE" == "hf" || "$VIME_WEIGHT_SYNC_NAME_MODE" == "vllm_native" ]] || \
+  fail "VIME_WEIGHT_SYNC_NAME_MODE must be hf or vllm_native"
+[[ "$VIME_WEIGHT_SYNC_NAME_MODE" == "hf" || "$VIME_WEIGHT_SYNC_TRACE" == "1" ]] || \
+  fail "VIME_WEIGHT_SYNC_NAME_MODE=vllm_native requires VIME_WEIGHT_SYNC_TRACE=1"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -126,6 +133,7 @@ export RAY_TMPDIR="${RAY_TMPDIR:-/data/$USER/ray}"
 export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 export VLLM_LOGGING_LEVEL
+export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 
@@ -220,6 +228,7 @@ print(json.dumps({"env_vars": {
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
+    "VIME_WEIGHT_SYNC_NAME_MODE": os.environ["VIME_WEIGHT_SYNC_NAME_MODE"],
 }}))
 PY
 )"
@@ -303,6 +312,7 @@ echo "vLLM weight sync packed: $VLLM_WEIGHT_SYNC_PACKED"
 echo "Megatron-to-HF conversion mode: $MEGATRON_TO_HF_MODE"
 echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
 echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
+echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
 
 MISC_ARGS=(
   --attention-dropout 0.0
