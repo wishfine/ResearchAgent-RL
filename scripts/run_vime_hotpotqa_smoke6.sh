@@ -59,6 +59,11 @@ VIME_WEIGHT_SYNC_NAME_MODE="${VIME_WEIGHT_SYNC_NAME_MODE:-hf}"
 UPDATE_WEIGHT_TRANSPORT="${UPDATE_WEIGHT_TRANSPORT:-nccl}"
 UPDATE_WEIGHT_DISK_DIR="${UPDATE_WEIGHT_DISK_DIR:-$RUN_DIR/weight_sync}"
 UPDATE_WEIGHT_DISK_KEEP_FILES="${UPDATE_WEIGHT_DISK_KEEP_FILES:-0}"
+# The installed vLLM 0.23 completes the disk-reload RPC before every TP worker
+# has necessarily closed the safetensors files.  In compatibility mode we
+# retain this many most-recent versions and prune only a version that has been
+# superseded by a subsequent completed rollout.
+VIME_DISK_WEIGHT_SYNC_KEEP_LAST="${VIME_DISK_WEIGHT_SYNC_KEEP_LAST:-2}"
 
 GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
 ACTOR_GPUS="${ACTOR_GPUS:-4}"
@@ -102,6 +107,8 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
   fail "UPDATE_WEIGHT_TRANSPORT must be nccl or disk"
 [[ "$UPDATE_WEIGHT_DISK_KEEP_FILES" =~ ^[01]$ ]] || \
   fail "UPDATE_WEIGHT_DISK_KEEP_FILES must be 0 or 1"
+[[ "$VIME_DISK_WEIGHT_SYNC_KEEP_LAST" =~ ^[1-9][0-9]*$ ]] || \
+  fail "VIME_DISK_WEIGHT_SYNC_KEEP_LAST must be a positive integer"
 
 "$TRAIN_ENV/bin/python" - "$PROMPT_DATA" <<'PY'
 import json
@@ -146,6 +153,7 @@ export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
 export VIME_DISK_WEIGHT_SYNC_COMPAT="${VIME_DISK_WEIGHT_SYNC_COMPAT:-1}"
+export VIME_DISK_WEIGHT_SYNC_KEEP_LAST
 
 mkdir -p "$RUN_DIR" "$RAY_TMPDIR"
 if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
@@ -250,6 +258,7 @@ print(json.dumps({"env_vars": {
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
     "VIME_WEIGHT_SYNC_NAME_MODE": os.environ["VIME_WEIGHT_SYNC_NAME_MODE"],
     "VIME_DISK_WEIGHT_SYNC_COMPAT": os.environ["VIME_DISK_WEIGHT_SYNC_COMPAT"],
+    "VIME_DISK_WEIGHT_SYNC_KEEP_LAST": os.environ["VIME_DISK_WEIGHT_SYNC_KEEP_LAST"],
 }}))
 PY
 )"
@@ -348,6 +357,9 @@ echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
 echo "Vime weight-sync transport: $UPDATE_WEIGHT_TRANSPORT"
 if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
   echo "Vime weight-sync disk directory: $UPDATE_WEIGHT_DISK_DIR"
+  if [[ "$VIME_DISK_WEIGHT_SYNC_COMPAT" == "1" ]]; then
+    echo "Vime disk-sync retention: keep last $VIME_DISK_WEIGHT_SYNC_KEEP_LAST checkpoint versions"
+  fi
 fi
 
 MISC_ARGS=(

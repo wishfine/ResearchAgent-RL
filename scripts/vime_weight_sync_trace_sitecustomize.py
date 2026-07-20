@@ -68,9 +68,12 @@ def _install_disk_reload_compat() -> None:
 
     Vime's checkpoint directory is already monotonically versioned
     (``weight_v000001``, ...), so omitting the unsupported ``weight_version``
-    keyword cannot cause a stale checkpoint to be selected.  This deliberately
-    patches only the trainer-side dispatcher and leaves the actual vLLM disk
-    loader untouched.
+    keyword cannot cause a stale checkpoint to be selected.  vLLM 0.23 also
+    acknowledges the controller request before every TP worker has closed the
+    safetensors shards.  Therefore the current checkpoint is never removed
+    here; only a version two successful rollout generations behind is pruned.
+    This deliberately patches only the trainer-side dispatcher and leaves the
+    actual vLLM disk loader untouched.
     """
 
     module = importlib.import_module(
@@ -119,8 +122,25 @@ def _install_disk_reload_compat() -> None:
                 for engine in self.rollout_engines
             ]
         module.ray.get(refs)
-        if not self.args.update_weight_disk_keep_files:
-            module.shutil.rmtree(version_dir, ignore_errors=True)
+
+        # Do not use Vime's immediate cleanup here.  On this vLLM release the
+        # HTTP response can arrive before every TP worker has opened all shard
+        # files, which makes deleting ``version_dir`` a data race.  A version
+        # older than ``keep_last`` has been superseded by a later checkpoint
+        # that has already served a complete rollout before this next update.
+        keep_last = int(os.environ.get("VIME_DISK_WEIGHT_SYNC_KEEP_LAST", "2"))
+        stale_version = self.weight_version - keep_last
+        if stale_version >= 1 and module.dist.get_rank() == 0:
+            stale_dir = module.Path(self.args.update_weight_disk_dir) / (
+                f"weight_v{stale_version:06d}"
+            )
+            if stale_dir.exists():
+                module.shutil.rmtree(stale_dir, ignore_errors=True)
+                module.logger.info(
+                    "Pruned superseded disk checkpoint %s; retaining last %d versions",
+                    stale_dir,
+                    keep_last,
+                )
         module.ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
         module.dist.barrier(group=module.get_gloo_group())
 
