@@ -165,7 +165,7 @@ if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" || "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]
   # Do not expose sitecustomize to the launcher itself: the JSON-producing
   # subprocess below must emit JSON and nothing else. Ray workers receive this
   # path through runtime_env instead.
-  RUNTIME_PYTHONPATH="$TRACE_SITE_DIR:$RUNTIME_PYTHONPATH"
+  RUNTIME_PYTHONPATH="$RUNTIME_SITE_DIR:$RUNTIME_PYTHONPATH"
 fi
 
 "$TRAIN_ENV/bin/python" - <<'PY'
