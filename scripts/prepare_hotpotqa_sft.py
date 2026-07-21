@@ -57,6 +57,13 @@ def _make_env(corpus: CorpusStore) -> ResearchEnv:
     return env
 
 
+def _task_candidate_count(corpus: CorpusStore, task: TaskSample) -> int:
+    """Return the size of the task-isolated HotpotQA distractor pool."""
+    if not task.reference_docs:
+        return 3
+    return sum(chunk.doc_id in task.reference_docs for chunk in corpus.chunks.values())
+
+
 def _append_turn(collector: ConversationCollector, env: ResearchEnv, action: Action, text: str) -> tuple[bool, str]:
     collector.add_assistant_response(text)
     _, done, reason = env.step(action)
@@ -85,15 +92,26 @@ def build_examples(tasks_dir: str | Path, corpus_dir: str | Path) -> list[dict[s
         collector = ConversationCollector()
         collector.add_user_message(task.user_query)
         citation_ids = list(task.ground_truth_citations)
+        search_topk = max(3, _task_candidate_count(corpus, task))
 
         done, _ = _append_turn(
             collector,
             env,
-            Action("SEARCH", "Find evidence for the question", {"query": task.user_query, "topk": 3}),
-            _action_text("SEARCH", "Find evidence for the question", {"query": task.user_query, "topk": 3}),
+            Action("SEARCH", "Find evidence for the question", {"query": task.user_query, "topk": search_topk}),
+            _action_text("SEARCH", "Find evidence for the question", {"query": task.user_query, "topk": search_topk}),
         )
         if done:
             raise RuntimeError(f"{task.task_id} terminated after SEARCH")
+        returned_chunk_ids = {
+            candidate["chunk_id"]
+            for candidate in env._state.trajectory[-1].tool_result.data["candidates"]
+        }
+        missing_from_search = set(citation_ids) - returned_chunk_ids
+        if missing_from_search:
+            raise RuntimeError(
+                f"{task.task_id} SEARCH did not return supporting chunks: "
+                f"{sorted(missing_from_search)}"
+            )
         done, _ = _append_turn(
             collector,
             env,

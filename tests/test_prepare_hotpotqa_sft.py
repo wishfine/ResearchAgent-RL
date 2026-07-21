@@ -41,6 +41,11 @@ class TestPrepareHotpotQASFT(unittest.TestCase):
             self.assertTrue(all(message.startswith("<action>{") and message.endswith("}</action>") for message in assistant_messages))
             self.assertTrue(all("<reasoning>" not in message and "<think>" not in message for message in assistant_messages))
 
+            search_observation = examples[0]["messages"][3]["content"]
+            self.assertIn(citation_id, search_observation)
+            read_action = ActionParser.parse(assistant_messages[1])
+            self.assertEqual(read_action.params["chunk_ids"], [citation_id])
+
             output = root / "sft.jsonl"
             manifest = write_examples(examples, output)
             self.assertEqual(manifest["records"], 1)
