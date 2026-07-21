@@ -123,7 +123,13 @@ def build_examples(tasks_dir: str | Path, corpus_dir: str | Path) -> list[dict[s
         examples.append({
             "format": "research-agent-sft-v1",
             "task_id": task.task_id,
-            "messages": [{"role": segment.role, "content": segment.text} for segment in collector.segments],
+            # Vime's MultiTurnLossMaskGenerator accepts standard chat roles.
+            # Environment observations are user-visible tool results, so map
+            # them to user rather than relying on a nonstandard role.
+            "messages": [
+                {"role": "user" if segment.role == "observation" else segment.role, "content": segment.text}
+                for segment in collector.segments
+            ],
             "metadata": {
                 "ground_truth_answer": task.ground_truth_answer,
                 "ground_truth_citations": citation_ids,
