@@ -7,6 +7,15 @@ class SearchTool(BaseTool):
     name = "SEARCH"
     description = "Search corpus for chunks relevant to query"
 
+    @staticmethod
+    def _scoped_chunks(corpus, doc_ids: list[str]):
+        """Get task-scoped chunks from the document index when possible."""
+        documents = [corpus.docs.get(doc_id) for doc_id in doc_ids]
+        if all(document is not None for document in documents):
+            return [chunk for document in documents for chunk in document.chunks]
+        allowed_doc_ids = set(doc_ids)
+        return [chunk for chunk in corpus.chunks.values() if chunk.doc_id in allowed_doc_ids]
+
     def execute(self, params: dict, state: EnvState) -> ToolResult:
         query = params["query"]
         topk = params.get("topk", 10)
@@ -19,7 +28,14 @@ class SearchTool(BaseTool):
         task = state.task
         doc_ids = task.reference_docs if task.reference_docs else None
 
-        results = corpus.search(query, topk=topk, doc_ids=doc_ids)
+        scoped_chunks = self._scoped_chunks(corpus, doc_ids) if doc_ids else []
+        if scoped_chunks and len(scoped_chunks) <= topk:
+            # For a complete, task-isolated candidate pool, local lexical
+            # ranking is equivalent for the returned set and avoids scoring
+            # every chunk in the 7k-task split.
+            results = corpus.search_simple(query, topk=topk, doc_ids=doc_ids)
+        else:
+            results = corpus.search(query, topk=topk, doc_ids=doc_ids)
 
         # HotpotQA distractor tasks intentionally scope retrieval to a small
         # per-task candidate set.  When the caller asks for at least that many
@@ -27,12 +43,7 @@ class SearchTool(BaseTool):
         # passages.  Otherwise a supporting paragraph can be absent from a
         # SEARCH observation while still being a valid corpus chunk, which
         # makes a SEARCH -> READ trajectory impossible to reproduce.
-        if doc_ids:
-            scoped_chunks = [
-                chunk
-                for chunk in corpus.chunks.values()
-                if chunk.doc_id in set(doc_ids)
-            ]
+        if scoped_chunks:
             if len(scoped_chunks) <= topk:
                 seen_chunk_ids = {candidate.chunk_id for candidate in results}
                 for chunk in sorted(scoped_chunks, key=lambda item: item.chunk_id):

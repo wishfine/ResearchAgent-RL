@@ -39,6 +39,33 @@ class TestSearchTool(unittest.TestCase):
             {"matching", "supporting"},
         )
 
+    def test_scoped_complete_search_does_not_call_global_bm25_search(self):
+        corpus = CorpusStore()
+        document = Document(doc_id="task", title="task")
+        chunk = Chunk("evidence", "task", "maple leaf", 0, 10, "Evidence")
+        document.add_chunk(chunk)
+        corpus.chunks[chunk.chunk_id] = chunk
+        corpus._chunk_ids.add(chunk.chunk_id)
+        corpus.docs[document.doc_id] = document
+
+        task = TaskSample(
+            task_id="task",
+            task_type=TaskType.SURVEY_SYNTHESIS,
+            user_query="maple leaf",
+            rubric=Rubric(),
+            reference_docs=["task"],
+        )
+        state = EnvState(task=task, _corpus=corpus)
+
+        def fail_global_search(*args, **kwargs):
+            raise AssertionError("complete scoped SEARCH should use the local candidate pool")
+
+        corpus.search = fail_global_search
+        result = SearchTool().execute({"query": "maple leaf", "topk": 1}, state)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["candidates"][0]["chunk_id"], "evidence")
+
 
 if __name__ == "__main__":
     unittest.main()

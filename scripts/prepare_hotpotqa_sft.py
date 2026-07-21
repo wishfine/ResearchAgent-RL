@@ -61,7 +61,11 @@ def _task_candidate_count(corpus: CorpusStore, task: TaskSample) -> int:
     """Return the size of the task-isolated HotpotQA distractor pool."""
     if not task.reference_docs:
         return 3
-    return sum(chunk.doc_id in task.reference_docs for chunk in corpus.chunks.values())
+    documents = [corpus.docs.get(doc_id) for doc_id in task.reference_docs]
+    if all(document is not None for document in documents):
+        return sum(len(document.chunks) for document in documents)
+    task_doc_ids = set(task.reference_docs)
+    return sum(chunk.doc_id in task_doc_ids for chunk in corpus.chunks.values())
 
 
 def _append_turn(collector: ConversationCollector, env: ResearchEnv, action: Action, text: str) -> tuple[bool, str]:

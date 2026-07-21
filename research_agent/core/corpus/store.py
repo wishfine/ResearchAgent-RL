@@ -98,10 +98,21 @@ class CorpusStore:
 
         chunk_ids_to_search = set(self._chunk_ids)
         if doc_ids is not None:
-            chunk_ids_to_search = {
-                cid for cid, chunk in self.chunks.items()
-                if chunk.doc_id in doc_ids
-            }
+            # HotpotQA retrieval is normally scoped to a single task document.
+            # Use the document index when it is available instead of scanning
+            # every split chunk for every query.
+            indexed_docs = [self.docs.get(doc_id) for doc_id in doc_ids]
+            if all(document is not None for document in indexed_docs):
+                chunk_ids_to_search = {
+                    chunk.chunk_id
+                    for document in indexed_docs
+                    for chunk in document.chunks
+                }
+            else:
+                chunk_ids_to_search = {
+                    cid for cid, chunk in self.chunks.items()
+                    if chunk.doc_id in doc_ids
+                }
 
         for chunk_id in chunk_ids_to_search:
             chunk = self.chunks[chunk_id]
