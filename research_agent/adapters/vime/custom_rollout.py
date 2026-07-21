@@ -202,6 +202,10 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict[str, Any
             "cited_chunk_ids": episode.cited_chunk_ids,
             "steps_count": episode.total_steps,
             "invalid_action_count": episode.n_invalid_steps,
+            "valid_action_count": episode.n_valid_steps,
+            "format_valid_rate": (
+                episode.n_valid_steps / episode.total_steps if episode.total_steps else 0.0
+            ),
             "generation_error": generation_error,
         }
     )

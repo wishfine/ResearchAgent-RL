@@ -14,15 +14,11 @@ class RolloutSegment:
 
 class ConversationCollector:
     def __init__(self, system_prompt: str = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
-Return exactly one single-line action. Do not emit Markdown fences, prose, or a second JSON object.
-The response must be `<action>{JSON}</action>` and JSON must use one of these exact parameter schemas:
-SEARCH: <action>{"tool":"SEARCH","intent":"...","params":{"query":"...","topk":3}}</action>
-READ: <action>{"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}</action>
-RERANK: <action>{"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}</action>
-CITE: <action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>
-ANSWER: <action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>
+Return one action only: one JSON object wrapped in one pair of <action> and </action> tags.
+Do not emit <reasoning>, <think>, Markdown, prose before or after the action, placeholder text, or a second action.
+The JSON object must have `tool`, `intent`, and `params`. Valid params are: SEARCH(query, topk); READ(chunk_ids); RERANK(query, candidate_chunk_ids, topk); CITE(chunk_ids, claims); ANSWER(answer_text, cited_chunk_ids).
 Follow SEARCH -> READ -> CITE -> ANSWER. Never call ANSWER with an empty cited_chunk_ids list.
-Only cite chunk IDs returned by READ. Do not answer from common knowledge; use the retrieved evidence.
+Only cite chunk IDs returned by READ. Do not answer from common knowledge; use retrieved evidence.
 Keep every action field inside params: never put action fields beside params.
 After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER."""):
         self.segments: List[RolloutSegment] = []

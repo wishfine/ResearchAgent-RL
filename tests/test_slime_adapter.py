@@ -215,5 +215,23 @@ class TestSlimeAdapter(unittest.TestCase):
         # Expected reward: 0.0 - 0.05 - 0.10 = -0.15
         self.assertAlmostEqual(reward, -0.15, places=4)
 
+    def test_custom_reward_can_make_format_compliance_explicit(self):
+        self.args.invalid_penalty = 0.5
+        self.args.format_reward = 0.2
+        sample = {
+            "ground_truth_answer": "Canada",
+            "ground_truth_citations": ["maple_leaf_flag"],
+            "metadata": {
+                "final_answer": "",
+                "cited_chunk_ids": [],
+                "steps_count": 2,
+                "invalid_action_count": 1,
+                "valid_action_count": 1,
+            },
+        }
+        reward = self.loop.run_until_complete(custom_rm(self.args, sample))
+        # Format credit: 0.2 * 1/2; penalties: 0.5 invalid + 0.01 * 2 steps.
+        self.assertAlmostEqual(reward, -0.42, places=4)
+
 if __name__ == "__main__":
     unittest.main()

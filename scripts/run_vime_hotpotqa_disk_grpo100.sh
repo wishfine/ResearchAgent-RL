@@ -22,5 +22,12 @@ export SAVE_INTERVAL="${SAVE_INTERVAL:-25}"
 export UPDATE_WEIGHT_TRANSPORT="disk"
 export UPDATE_WEIGHT_DISK_KEEP_FILES="0"
 export VIME_DISK_WEIGHT_SYNC_KEEP_LAST="${VIME_DISK_WEIGHT_SYNC_KEEP_LAST:-2}"
+# The previous unconstrained pilot collapsed from strict actions into long
+# planning prose.  Keep malformed actions well below valid trajectories and
+# retain a reference-policy tether.  This launcher is still gated on a
+# successful SFT checkpoint evaluation.
+export RESEARCH_AGENT_FORMAT_REWARD="${RESEARCH_AGENT_FORMAT_REWARD:-0.20}"
+export RESEARCH_AGENT_INVALID_ACTION_PENALTY="${RESEARCH_AGENT_INVALID_ACTION_PENALTY:-0.50}"
+export KL_LOSS_COEF="${KL_LOSS_COEF:-0.02}"
 
 exec bash "$SCRIPT_DIR/run_vime_hotpotqa_smoke6.sh"

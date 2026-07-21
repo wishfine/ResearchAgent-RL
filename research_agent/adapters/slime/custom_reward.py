@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any
+import os
 import re
 import string
 
@@ -69,6 +70,16 @@ async def custom_rm(args: Any, sample: Any) -> float:
         return getattr(obj, key, default)
 
     metadata = get_val(sample, "metadata", {}) or {}
+
+    def float_setting(attribute: str, environment: str, default: float) -> float:
+        """Prefer an explicit framework argument, then an opt-in env setting."""
+        value = get_val(args, attribute, None)
+        if value is None:
+            value = os.environ.get(environment, default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
     # Dataset adapters keep task-level verifier fields in ``metadata``.  Keep
     # the top-level lookup for backwards compatibility with older Slime data.
     ground_truth_answer = get_val(sample, "ground_truth_answer", "") or metadata.get("ground_truth_answer", "")
@@ -81,6 +92,7 @@ async def custom_rm(args: Any, sample: Any) -> float:
     cited_ids = metadata.get("cited_chunk_ids", None)
     steps_count = metadata.get("steps_count", 0)
     invalid_action_count = metadata.get("invalid_action_count", 0)
+    valid_action_count = metadata.get("valid_action_count", max(0, steps_count - invalid_action_count))
 
     # Fallback: if metadata is empty, parse raw response text
     if final_answer is None or cited_ids is None:
@@ -105,15 +117,21 @@ async def custom_rm(args: Any, sample: Any) -> float:
     # 3. Compute accuracy and citation metrics
     metrics = compute_metrics(final_answer, ground_truth_answer, cited_ids, ground_truth_citations)
 
-    # 4. Calculate total reward score using user recommended formula:
-    # reward = 1.0 * contains + 0.5 * token_f1 + 0.5 * citation_f1 - 0.05 * invalid_actions - 0.01 * steps
+    # 4. Score answer quality and action protocol separately.  The latter is
+    # essential for GRPO: without it an invalid trajectory can be nearly tied
+    # with a grounded one when the group contains no correct answer.
     contains = metrics.get("contains", 0.0)
     token_f1 = metrics.get("token_f1", 0.0)
     citation_f1 = metrics.get("citation_f1", 0.0)
+    invalid_penalty = float_setting("invalid_penalty", "RESEARCH_AGENT_INVALID_ACTION_PENALTY", 0.05)
+    step_penalty = float_setting("step_penalty", "RESEARCH_AGENT_STEP_PENALTY", 0.01)
+    format_reward = float_setting("format_reward", "RESEARCH_AGENT_FORMAT_REWARD", 0.0)
+    format_valid_rate = valid_action_count / steps_count if steps_count else 0.0
 
     score = (1.0 * contains) + (0.5 * token_f1) + (0.5 * citation_f1)
-    score -= (0.05 * invalid_action_count)
-    score -= (0.01 * steps_count)
+    score += format_reward * format_valid_rate
+    score -= invalid_penalty * invalid_action_count
+    score -= step_penalty * steps_count
 
     # Clip to reasonable range
     return max(-2.0, min(2.0, score))

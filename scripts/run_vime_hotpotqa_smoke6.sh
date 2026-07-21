@@ -150,6 +150,12 @@ export PYTHONPATH="$PROJECT_ROOT:$MEGATRON_ROOT:$VIME_ROOT${PYTHONPATH:+:$PYTHON
 export RAY_TMPDIR="${RAY_TMPDIR:-/data/$USER/ray}"
 export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
+# These defaults preserve the historic reward exactly.  The bounded GRPO
+# launcher overrides them after an SFT cold start so malformed action turns
+# cannot tie with grounded trajectories.
+export RESEARCH_AGENT_FORMAT_REWARD="${RESEARCH_AGENT_FORMAT_REWARD:-0.0}"
+export RESEARCH_AGENT_INVALID_ACTION_PENALTY="${RESEARCH_AGENT_INVALID_ACTION_PENALTY:-0.05}"
+export RESEARCH_AGENT_STEP_PENALTY="${RESEARCH_AGENT_STEP_PENALTY:-0.01}"
 export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
 export VIME_DISK_WEIGHT_SYNC_COMPAT="${VIME_DISK_WEIGHT_SYNC_COMPAT:-1}"
@@ -254,6 +260,9 @@ print(json.dumps({"env_vars": {
     "NCCL_NVLS_ENABLE": "0",
     "RESEARCH_AGENT_CORPUS_DIR": os.environ["RESEARCH_AGENT_CORPUS_DIR"],
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
+    "RESEARCH_AGENT_FORMAT_REWARD": os.environ["RESEARCH_AGENT_FORMAT_REWARD"],
+    "RESEARCH_AGENT_INVALID_ACTION_PENALTY": os.environ["RESEARCH_AGENT_INVALID_ACTION_PENALTY"],
+    "RESEARCH_AGENT_STEP_PENALTY": os.environ["RESEARCH_AGENT_STEP_PENALTY"],
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
     "VIME_WEIGHT_SYNC_NAME_MODE": os.environ["VIME_WEIGHT_SYNC_NAME_MODE"],
@@ -307,7 +316,7 @@ PERF_ARGS=(
 GRPO_ARGS=(
   --advantage-estimator grpo
   --use-kl-loss
-  --kl-loss-coef 0.00
+  --kl-loss-coef "${KL_LOSS_COEF:-0.02}"
   --kl-loss-type low_var_kl
   --entropy-coef 0.00
   --eps-clip 0.2

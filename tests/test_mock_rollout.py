@@ -31,14 +31,12 @@ class TestMockRolloutAndMasking(unittest.TestCase):
             expected + "<|im_start|>assistant\n"
         )
 
-    def test_default_prompt_declares_exact_schema_for_every_tool(self):
+    def test_default_prompt_declares_single_action_contract_without_copyable_examples(self):
         prompt = ConversationCollector().segments[0].text
 
-        self.assertIn('<action>{"tool":"SEARCH","intent":"...","params":{"query":"...","topk":3}}</action>', prompt)
-        self.assertIn('<action>{"tool":"READ","intent":"...","params":{"chunk_ids":["..."]}}</action>', prompt)
-        self.assertIn('<action>{"tool":"RERANK","intent":"...","params":{"query":"...","candidate_chunk_ids":["..."],"topk":3}}</action>', prompt)
-        self.assertIn('<action>{"tool":"CITE","intent":"...","params":{"chunk_ids":["..."],"claims":["..."]}}</action>', prompt)
-        self.assertIn('<action>{"tool":"ANSWER","intent":"...","params":{"answer_text":"...","cited_chunk_ids":["..."]}}</action>', prompt)
+        self.assertIn("one JSON object wrapped in one pair of <action> and </action> tags", prompt)
+        self.assertIn("Do not emit <reasoning>, <think>", prompt)
+        self.assertNotIn('"tool":"SEARCH","intent":"..."', prompt)
         self.assertIn("SEARCH -> READ -> CITE -> ANSWER", prompt)
         self.assertIn("Never call ANSWER with an empty cited_chunk_ids list", prompt)
         self.assertIn("never put action fields beside params", prompt)
