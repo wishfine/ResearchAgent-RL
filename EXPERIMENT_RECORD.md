@@ -170,6 +170,8 @@ HotpotQA 主指标排序如下：
 3. 将四组结果填入下表，按 `task_success` 为主、格式有效率和引用 F1 为辅选择唯一优胜者。
 4. 仅对优胜者跑 eval 全量 3,000 题；超过 E01 基座全量结果后，才开始带 KL 约束的 GRPO。
 
+仓库脚本 `scripts/evaluate_sft_checkpoints.sh` 固化了上述四 checkpoint 的顺序导出、健康检查、单 GPU vLLM 服务和固定 n=100 评测流程；默认输出在 `~/ResearchAgent-RL/results/`，并允许通过环境变量覆盖路径、端口和 GPU。
+
 | checkpoint | task success | answer quality | citation F1 | parse success | invalid rate | 评测输出 | 状态 |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | `iter_0000249` | 待测 | 待测 | 待测 | 待测 | 待测 | — | 待导出/评测 |
