@@ -79,7 +79,7 @@ wait_for_server() {
   local models_file="$1"
   local vllm_log="$2"
   for _ in $(seq 1 180); do
-    if curl -fsS "http://127.0.0.1:${VLLM_PORT}/v1/models" >"$models_file"; then
+    if curl -fsS "http://127.0.0.1:${VLLM_PORT}/v1/models" >"$models_file" 2>/dev/null; then
       return 0
     fi
     if ! kill -0 "$server_pid" 2>/dev/null; then
