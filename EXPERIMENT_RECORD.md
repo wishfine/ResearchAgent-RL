@@ -161,23 +161,34 @@ HotpotQA 主指标排序如下：
 
 2026-07-22 核对的 checkpoint 清单确认 `latest_checkpointed_iteration.txt=874`，并且四个待评目录均存在；`rollout/` 目录不是模型 checkpoint。
 
-## 当前待执行：SFT checkpoint 筛选
+## SFT checkpoint 筛选（固定 n=100，已完成）
 
-不能仅凭最低 SFT loss 选择模型。按顺序进行：
+不能仅凭最低 SFT loss 选择模型。四个 checkpoint 已使用同一固定 100 题和 `selection_seed=20260713` 完成独立环境评测：
 
-1. 对 `iter_0000249`、`iter_0000499`、`iter_0000749`、`iter_0000874` 各导出为可服务的 HuggingFace 权重，并保留一次转换日志。
-2. 每个检查点在 GPU 2 上单独启动 vLLM 服务，使用固定 100 题 / `selection_seed=20260713` 评测。
-3. 将四组结果填入下表，按 `task_success` 为主、格式有效率和引用 F1 为辅选择唯一优胜者。
-4. 仅对优胜者跑 eval 全量 3,000 题；超过 E01 基座全量结果后，才开始带 KL 约束的 GRPO。
+| checkpoint | task success | answer quality | citation F1 | parse success | invalid rate | 平均步骤 | 平均延迟 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `iter_0000249` | 0.760 | 0.746 | 0.860 | 1.000 | 0.003 | 4.02 | 12.87 s |
+| `iter_0000499` | 0.770 | 0.764 | 0.900 | 1.000 | 0.000 | 4.00 | 12.80 s |
+| `iter_0000749` | 0.770 | 0.743 | 0.905 | 1.000 | 0.000 | 4.00 | 12.80 s |
+| `iter_0000874` | **0.800** | **0.781** | **0.925** | 1.000 | 0.000 | 4.00 | 12.78 s |
+
+| 项目 | 值 |
+| --- | --- |
+| 评测输出 | `~/ResearchAgent-RL/results/hotpotqa_eval_sft_ckpts_n100_20260722_135303` |
+| 运行状态 | 四个 checkpoint 均完成 |
+| 选择结果 | **`iter_0000874`** |
+
+结论：所有 SFT checkpoint 都消除了基座/GRPO100 中的主要格式问题，未观察到后期 checkpoint 坍缩。`iter_0000874` 同时取得最高 task success、answer quality 和 citation F1，故作为唯一候选进入完整 3,000 条评测。相对于固定 n=100 基座，`iter_0000874` 的 task success 从 0.300 提升至 0.800，parse success 从 0.913 提升至 1.000，invalid rate 从 0.097 降至 0。
+
+## 当前待执行：SFT 最优 checkpoint 的完整评测
+
+按顺序进行：
+
+1. 对 `iter_0000874` 跑 eval 全量 3,000 题。
+2. 与 E01 的基座全量 3,000 条结果进行比较。
+3. 仅当它保持或超过基座全量效果后，才开始带 KL 约束和格式奖励监控的 GRPO。
 
 仓库脚本 `scripts/evaluate_sft_checkpoints.sh` 固化了上述四 checkpoint 的顺序导出、健康检查、单 GPU vLLM 服务和固定 n=100 评测流程；默认输出在 `~/ResearchAgent-RL/results/`，并允许通过环境变量覆盖路径、端口和 GPU。
-
-| checkpoint | task success | answer quality | citation F1 | parse success | invalid rate | 评测输出 | 状态 |
-| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| `iter_0000249` | 待测 | 待测 | 待测 | 待测 | 待测 | — | 待导出/评测 |
-| `iter_0000499` | 待测 | 待测 | 待测 | 待测 | 待测 | — | 待导出/评测 |
-| `iter_0000749` | 待测 | 待测 | 待测 | 待测 | 待测 | — | 待导出/评测 |
-| `iter_0000874` | 待测 | 待测 | 待测 | 待测 | 待测 | — | 待导出/评测 |
 
 ## 训练日志中应看的内容
 
