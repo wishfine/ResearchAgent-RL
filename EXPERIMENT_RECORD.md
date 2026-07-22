@@ -90,7 +90,7 @@ HotpotQA 主指标排序如下：
 | 单次 vLLM 重载时间 | 2.83–3.00 s |
 | 备注 | 保留同步文件的调试运行占用约 101 GB；正式运行应删除或不保留历史同步权重。 |
 
-结论：当前 vLLM 0.23 兼容模式下的磁盘同步链路已验证，不应再使用此前失败的内存权重同步路径。
+结论：当前 vLLM 0.23 兼容模式的磁盘同步链路在独立稳定性实验中已验证，不应再使用此前失败的内存权重同步路径。注意：GRPO100 的 `driver.log` 同时出现大量 `Failed to load weights` 警告（主要来自 `Worker_TP1`）；尽管随后有成功的 checkpoint 保存与重载记录，仍应把它视为该历史运行的基础设施风险，不能据此单独断言同步实现完全无误。
 
 ### E04：GRPO 100 step（失败/回归对照）
 
@@ -111,7 +111,7 @@ HotpotQA 主指标排序如下：
 | invalid action rate | 0.0970 | **0.6013** |
 | average steps | 5.35 | 4.42 |
 
-诊断结论：训练后出现动作格式坍缩（解释性文字、无 action 或多个 action），而不是基准评测脚本失效。训练日志中的 reward 约 1.4–1.96 是组内中心化前的原始奖励；GRPO advantage 接近 0 是 group-centering 的正常现象。该运行的 `--kl-loss-coef 0.00` 没有提供 KL 约束。**禁止把该 GRPO 权重作为候选模型继续训练。**
+诊断结论：训练后出现动作格式坍缩（解释性文字、无 action 或多个 action），而不是基准评测脚本失效。训练日志中的 reward 约 1.4–1.96 是组内中心化前的原始奖励；GRPO advantage 接近 0 是 group-centering 的正常现象。该运行的 `--kl-loss-coef 0.00` 没有提供 KL 约束。且该历史日志存在前述 TP1 权重加载告警，所以它应被视为“策略/格式约束不足与可能的权重加载风险共同存在”的负对照，而非单因果实验。**禁止把该 GRPO 权重作为候选模型继续训练。**
 
 ### E05：SFT smoke（32 题）
 
@@ -145,7 +145,17 @@ HotpotQA 主指标排序如下：
 | learning rate（step 874） | 1e-6 |
 | step time（step 874） | 21.35 s |
 
-说明：此 SFT 启动配置为 `--debug-train-only`，因此日志中的 `rollout/rewards=0` 是预期行为，不能用作任务质量指标；任务质量必须经独立 HotpotQA rollout 评测得出。
+训练曲线抽样（同一 `driver.log`）：
+
+| step | train loss | grad norm | learning rate |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.44937 | 39.983 | 3.81e-7 |
+| 249 | 0.00629 | 0.439 | 8.54e-6 |
+| 499 | 0.00523 | 0.368 | 4.68e-6 |
+| 749 | 0.00688 | 0.373 | 1.47e-6 |
+| 874 | 0.00672 | 0.337 | 1.00e-6 |
+
+说明：此 SFT 启动配置为 `--debug-train-only`，因此日志中的 `rollout/rewards=0` 是预期行为，不能用作任务质量指标；step 0 与 step 874 的 `rollout/truncated` 都是 0。任务质量仍必须经独立 HotpotQA rollout 评测得出。
 
 ## 当前待执行：SFT checkpoint 筛选
 
