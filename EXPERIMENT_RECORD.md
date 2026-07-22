@@ -34,6 +34,8 @@ HotpotQA 主指标排序如下：
 | 监督轨迹 | `SEARCH → READ → CITE → ANSWER`，每题 4 个 assistant action |
 | 检索约束 | `SEARCH` 使用问题本身作为 query，并返回覆盖支持证据的任务内候选集合；`READ` 只读取其中支持块 |
 
+该 manifest 已于 2026-07-22 从服务器导入本机项目 `artifacts/sft7k/` 并核对一致（该本机 artifact 不纳入 Git）。
+
 ## 已完成实验
 
 ### E01：基座模型完整评测
@@ -156,6 +158,8 @@ HotpotQA 主指标排序如下：
 | 874 | 0.00672 | 0.337 | 1.00e-6 |
 
 说明：此 SFT 启动配置为 `--debug-train-only`，因此日志中的 `rollout/rewards=0` 是预期行为，不能用作任务质量指标；step 0 与 step 874 的 `rollout/truncated` 都是 0。任务质量仍必须经独立 HotpotQA rollout 评测得出。
+
+2026-07-22 核对的 checkpoint 清单确认 `latest_checkpointed_iteration.txt=874`，并且四个待评目录均存在；`rollout/` 目录不是模型 checkpoint。
 
 ## 当前待执行：SFT checkpoint 筛选
 
