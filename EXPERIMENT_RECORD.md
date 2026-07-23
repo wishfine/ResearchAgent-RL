@@ -180,13 +180,9 @@ HotpotQA 主指标排序如下：
 
 结论：所有 SFT checkpoint 都消除了基座/GRPO100 中的主要格式问题，未观察到后期 checkpoint 坍缩。`iter_0000874` 同时取得最高 task success、answer quality 和 citation F1，故作为唯一候选进入完整 3,000 条评测。相对于固定 n=100 基座，`iter_0000874` 的 task success 从 0.300 提升至 0.800，parse success 从 0.913 提升至 1.000，invalid rate 从 0.097 降至 0。
 
-## 当前待执行：SFT 最优 checkpoint 的完整评测
+## SFT 最优 checkpoint 的完整评测（已完成）
 
-按顺序进行：
-
-1. 对 `iter_0000874` 跑 eval 全量 3,000 题。
-2. 与 E01 的基座全量 3,000 条结果进行比较。
-3. 仅当它保持或超过基座全量效果后，才开始带 KL 约束和格式奖励监控的 GRPO。
+`iter_0000874` 已完成全量 3,000 题评测，并已与 E01 基座结果比较。它保持了 n=100 筛选中的领先表现，因而满足进入下一阶段、带 KL 约束和格式监控的 GRPO 的前置条件。
 
 ### E07：SFT-874 完整评测（3,000 条）
 
