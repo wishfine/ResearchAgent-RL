@@ -188,6 +188,27 @@ HotpotQA 主指标排序如下：
 2. 与 E01 的基座全量 3,000 条结果进行比较。
 3. 仅当它保持或超过基座全量效果后，才开始带 KL 约束和格式奖励监控的 GRPO。
 
+### E07：SFT-874 完整评测（3,000 条）
+
+| 字段 | 值 |
+| --- | --- |
+| 模型 | SFT `iter_0000874` |
+| 评测集 | HotpotQA eval 全量 3,000，`selection_seed=20260713` |
+| 输出 | `~/ResearchAgent-RL/results/hotpotqa_eval_sft874_full_seed20260713_20260722_154042/iter_0000874/eval` |
+| 运行状态 | 已完成；2026-07-22 15:40 至 2026-07-23 02:28 |
+
+| 指标 | 基座全量（E01） | SFT-874 全量（E07） | 变化 |
+| --- | ---: | ---: | ---: |
+| task success | 0.3207 | **0.7913** | +0.4707 |
+| answer quality | 0.3404 | **0.7728** | +0.4324 |
+| citation F1 | 0.3493 | **0.9353** | +0.5860 |
+| action parse success | 0.8809 | **0.9996** | +0.1186 |
+| invalid action rate | 0.1358 | **0.0020** | −0.1338 |
+| average steps | 5.269 | **4.010** | −1.259 |
+| average latency / episode | 23.02 s | **12.87 s** | −10.15 s |
+
+结论：SFT-874 的全量结果确认固定 n=100 筛选并非偶然；它在正确性、引用质量、格式可靠性和延迟上均显著优于基座。该 checkpoint 通过进入下一阶段 GRPO 的效果门槛，但新的 GRPO 实验必须保留非零 KL 约束、逐轮格式监控和固定 n=100 checkpoint 评测，避免重现 E04 的退化。
+
 仓库脚本 `scripts/evaluate_sft_checkpoints.sh` 固化了上述四 checkpoint 的顺序导出、健康检查、单 GPU vLLM 服务和固定 n=100 评测流程；默认输出在 `~/ResearchAgent-RL/results/`，并允许通过环境变量覆盖路径、端口和 GPU。
 
 ## 训练日志中应看的内容
