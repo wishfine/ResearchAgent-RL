@@ -1,0 +1,17 @@
+{
+  "episodes": 3000,
+  "action_parse_success_rate": 0.8809444444444464,
+  "invalid_action_rate": 0.13584444444444452,
+  "answer_quality": 0.34042998981549005,
+  "answer_contains": 0.326,
+  "answer_token_f1": 0.08537088088675923,
+  "citation_precision": 0.43972222222222207,
+  "citation_recall": 0.305,
+  "citation_f1": 0.34931111111110763,
+  "average_steps": 5.269,
+  "repeated_query_rate": 0.03310555555555555,
+  "task_success": 0.32066666666666666,
+  "average_prompt_tokens": 6024.676,
+  "average_completion_tokens": 645.3866666666667,
+  "average_episode_latency_sec": 23.018690931367377
+}

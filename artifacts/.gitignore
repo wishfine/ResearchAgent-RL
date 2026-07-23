@@ -1,0 +1,5 @@
+# Large local-only evidence; metrics and concise evaluation logs are versioned.
+**/trajectories.jsonl
+environment*.txt
+**/eval.log
+**/driver.log

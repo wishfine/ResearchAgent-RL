@@ -1,0 +1,6 @@
+/data/zhangyonglin/research-agent-rl-data/outputs/vime_hotpotqa_sft7k_20260721_162728/checkpoints/latest_checkpointed_iteration.txt
+874iter_0000249
+iter_0000499
+iter_0000749
+iter_0000874
+rollout
