@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # GRPO v2: continue actor and KL reference from the validated SFT-874 policy.
 #
-# Default GPU topology: GPUs 2-3 actor (TP=2, DP=1); GPUs 4-5 rollout vLLM
-# (TP=2).  GPUs 0-1 and 6-7 remain available to other users/workloads.
+# Default GPU topology: GPUs 4-5 actor (TP=2, DP=1); GPUs 6-7 rollout vLLM
+# (TP=2). GPUs 0-3 remain available to other users/workloads.
 
 set -euo pipefail
 
@@ -24,7 +24,7 @@ export CKPT_STEP="${CKPT_STEP:-874}"
 
 # One rollout group has one prompt and eight policy samples, giving GRPO a
 # materially more useful within-group ranking signal than the old group size 4.
-export GPU_IDS="${GPU_IDS:-2,3,4,5}"
+export GPU_IDS="${GPU_IDS:-4,5,6,7}"
 export ACTOR_GPUS="${ACTOR_GPUS:-2}"
 export ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
 export NUM_ROLLOUT="${NUM_ROLLOUT:-100}"
