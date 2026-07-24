@@ -49,6 +49,10 @@ VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 # BF16 moment storage with OPTIMIZER_STATE_DTYPE=bf16; Megatron's
 # precision-aware optimizer retains FP32 arithmetic in its update kernels.
 OPTIMIZER_STATE_DTYPE="${OPTIMIZER_STATE_DTYPE:-fp32}"
+# FP32 gradient accumulation is useful for larger DP jobs, but with a
+# TP=2/DP=1 actor it materializes a full FP32 gradient buffer on each rank.
+# Keep the historical default and let constrained SFT->GRPO runs opt out.
+ACCUMULATE_ALLREDUCE_GRADS_IN_FP32="${ACCUMULATE_ALLREDUCE_GRADS_IN_FP32:-1}"
 # Keep packed transfer enabled for ordinary runs.  It can be disabled for a
 # controlled weight-sync diagnosis without changing the model, topology, or
 # NCCL transport.
@@ -126,6 +130,8 @@ fi
 [[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
 [[ "$OPTIMIZER_STATE_DTYPE" =~ ^(fp32|fp16|bf16)$ ]] || \
   fail "OPTIMIZER_STATE_DTYPE must be fp32, fp16, or bf16"
+[[ "$ACCUMULATE_ALLREDUCE_GRADS_IN_FP32" =~ ^[01]$ ]] || \
+  fail "ACCUMULATE_ALLREDUCE_GRADS_IN_FP32 must be 0 or 1"
 [[ "$VLLM_WEIGHT_SYNC_PACKED" =~ ^[01]$ ]] || fail "VLLM_WEIGHT_SYNC_PACKED must be 0 or 1"
 [[ "$MEGATRON_TO_HF_MODE" == "raw" || "$MEGATRON_TO_HF_MODE" == "bridge" ]] || \
   fail "MEGATRON_TO_HF_MODE must be raw or bridge"
@@ -188,6 +194,7 @@ export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
 # cannot tie with grounded trajectories.
 export RESEARCH_AGENT_FORMAT_REWARD="${RESEARCH_AGENT_FORMAT_REWARD:-0.0}"
 export RESEARCH_AGENT_INVALID_ACTION_PENALTY="${RESEARCH_AGENT_INVALID_ACTION_PENALTY:-0.05}"
+export RESEARCH_AGENT_NO_ANSWER_PENALTY="${RESEARCH_AGENT_NO_ANSWER_PENALTY:-0.20}"
 export RESEARCH_AGENT_STEP_PENALTY="${RESEARCH_AGENT_STEP_PENALTY:-0.01}"
 export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
@@ -295,6 +302,7 @@ print(json.dumps({"env_vars": {
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
     "RESEARCH_AGENT_FORMAT_REWARD": os.environ["RESEARCH_AGENT_FORMAT_REWARD"],
     "RESEARCH_AGENT_INVALID_ACTION_PENALTY": os.environ["RESEARCH_AGENT_INVALID_ACTION_PENALTY"],
+    "RESEARCH_AGENT_NO_ANSWER_PENALTY": os.environ["RESEARCH_AGENT_NO_ANSWER_PENALTY"],
     "RESEARCH_AGENT_STEP_PENALTY": os.environ["RESEARCH_AGENT_STEP_PENALTY"],
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
@@ -421,6 +429,7 @@ echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
 echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
 echo "Vime weight-sync transport: $UPDATE_WEIGHT_TRANSPORT"
 echo "Adam moment storage dtype: $OPTIMIZER_STATE_DTYPE"
+echo "Accumulate all-reduce gradients in FP32: $ACCUMULATE_ALLREDUCE_GRADS_IN_FP32"
 if [[ -n "$ACTOR_LOAD" ]]; then
   echo "Actor checkpoint load: $ACTOR_LOAD (reset training state: $ACTOR_LOAD_RESET_TRAINING_STATE)"
 fi
@@ -434,11 +443,13 @@ fi
 MISC_ARGS=(
   --attention-dropout 0.0
   --hidden-dropout 0.0
-  --accumulate-allreduce-grads-in-fp32
   --attention-softmax-in-fp32
   --attention-backend flash
   --no-gradient-accumulation-fusion
 )
+if [[ "$ACCUMULATE_ALLREDUCE_GRADS_IN_FP32" == "1" ]]; then
+  MISC_ARGS+=(--accumulate-allreduce-grads-in-fp32)
+fi
 
 set -x
 "$TRAIN_ENV/bin/ray" job submit \

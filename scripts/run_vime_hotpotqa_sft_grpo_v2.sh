@@ -42,6 +42,11 @@ export SAVE_INTERVAL="${SAVE_INTERVAL:-25}"
 # first optimizer step lazily materializes them.  BF16 moment storage cuts
 # their footprint in half while retaining the full model and group size eight.
 export OPTIMIZER_STATE_DTYPE="${OPTIMIZER_STATE_DTYPE:-bf16}"
+# Actor TP=2/DP=1 has no data-parallel peers to all-reduce with.  Avoid the
+# otherwise full-size FP32 accumulation buffer; BF16 gradients are enough for
+# this bounded, KL-regularized SFT->GRPO phase and leave room for TE's
+# precision-aware optimizer remainder state.
+export ACCUMULATE_ALLREDUCE_GRADS_IN_FP32="${ACCUMULATE_ALLREDUCE_GRADS_IN_FP32:-0}"
 
 # The first base-model GRPO run used KL=0 and lost strict action formatting.
 # Keep valid formatted trajectories distinguishable from invalid ones and
