@@ -27,6 +27,11 @@ REF_CHECKPOINT="${REF_CHECKPOINT:-$BASE/checkpoints/Qwen3.5-9B_torch_dist_v4_noa
 # latest_checkpointed_iteration.txt), not an iter_000xxxx child directory.
 ACTOR_LOAD="${ACTOR_LOAD:-}"
 CKPT_STEP="${CKPT_STEP:-}"
+# A checkpoint can either be resumed (model + optimizer + RNG) or used as a
+# model-only initialization for a new training phase.  The latter is required
+# for SFT -> GRPO: SFT's Adam moments are not useful for GRPO and, at 9B,
+# loading them can exhaust an 80 GiB actor rank before the first rollout.
+ACTOR_LOAD_RESET_TRAINING_STATE="${ACTOR_LOAD_RESET_TRAINING_STATE:-0}"
 PROMPT_DATA="${PROMPT_DATA:-$BASE/slime_data/hotpotqa_train_7k.jsonl}"
 CORPUS_DIR="${CORPUS_DIR:-$BASE/hotpotqa_7k3k/corpus/train}"
 RUN_DIR="${RUN_DIR:-$BASE/outputs/vime_hotpotqa_smoke6_$(date +%Y%m%d_%H%M%S)}"
@@ -102,6 +107,8 @@ fi
 if [[ -n "$CKPT_STEP" ]]; then
   [[ "$CKPT_STEP" =~ ^[0-9]+$ ]] || fail "CKPT_STEP must be a non-negative integer"
 fi
+[[ "$ACTOR_LOAD_RESET_TRAINING_STATE" =~ ^[01]$ ]] || \
+  fail "ACTOR_LOAD_RESET_TRAINING_STATE must be 0 or 1"
 [[ -f "$PROMPT_DATA" ]] || fail "Prompt data not found: $PROMPT_DATA"
 [[ -d "$CORPUS_DIR" ]] || fail "Corpus not found: $CORPUS_DIR"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
@@ -301,6 +308,11 @@ CKPT_ARGS=(
 )
 if [[ -n "$ACTOR_LOAD" ]]; then
   CKPT_ARGS+=(--load "$ACTOR_LOAD")
+  if [[ "$ACTOR_LOAD_RESET_TRAINING_STATE" == "1" ]]; then
+    # Fine-tune from the checkpoint's model weights, but deliberately start a
+    # new optimizer/scheduler/RNG state instead of resuming the prior phase.
+    CKPT_ARGS+=(--no-load-optim --no-load-rng)
+  fi
 fi
 if [[ -n "$CKPT_STEP" ]]; then
   CKPT_ARGS+=(--ckpt-step "$CKPT_STEP")
@@ -390,6 +402,9 @@ echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
 echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
 echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
 echo "Vime weight-sync transport: $UPDATE_WEIGHT_TRANSPORT"
+if [[ -n "$ACTOR_LOAD" ]]; then
+  echo "Actor checkpoint load: $ACTOR_LOAD (reset training state: $ACTOR_LOAD_RESET_TRAINING_STATE)"
+fi
 if [[ "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
   echo "Vime weight-sync disk directory: $UPDATE_WEIGHT_DISK_DIR"
   if [[ "$VIME_DISK_WEIGHT_SYNC_COMPAT" == "1" ]]; then
