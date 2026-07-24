@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Six-GPU Vime fully-async smoke run for ResearchAgent-RL on HotpotQA.
+# Configurable-topology Vime fully-async run for ResearchAgent-RL on HotpotQA.
 #
 # Default allocation: GPUs 0-1 are left untouched; GPUs 2-5 run the actor
 # (TP=2, DP=2) and GPUs 6-7 run one rollout engine (TP=2).
@@ -83,8 +83,16 @@ fail() {
 }
 
 IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
-[[ ${#GPU_LIST[@]} -eq 6 ]] || fail "GPU_IDS must contain exactly six GPU IDs, got: $GPU_IDS"
-[[ $((ACTOR_GPUS + ROLLOUT_GPUS)) -eq 6 ]] || fail "ACTOR_GPUS + ROLLOUT_GPUS must equal 6"
+[[ "$ACTOR_GPUS" =~ ^[1-9][0-9]*$ ]] || fail "ACTOR_GPUS must be a positive integer"
+[[ "$ROLLOUT_GPUS" =~ ^[1-9][0-9]*$ ]] || fail "ROLLOUT_GPUS must be a positive integer"
+TOTAL_GPUS=$((ACTOR_GPUS + ROLLOUT_GPUS))
+[[ ${#GPU_LIST[@]} -eq "$TOTAL_GPUS" ]] || \
+  fail "GPU_IDS must contain $TOTAL_GPUS IDs for actor=$ACTOR_GPUS and rollout=$ROLLOUT_GPUS, got: $GPU_IDS"
+# Qwen3.5's validated configuration fixes both Megatron and vLLM tensor
+# parallelism at two.  Actor GPU count therefore has to be a multiple of two;
+# a two-GPU actor means DP=1, while the historic four-GPU actor means DP=2.
+(( ACTOR_GPUS % 2 == 0 )) || fail "ACTOR_GPUS must be divisible by tensor parallel size 2"
+[[ "$ROLLOUT_GPUS" == "2" ]] || fail "ROLLOUT_GPUS must be 2 for vLLM tensor parallel size 2"
 [[ -d "$VIME_ROOT" ]] || fail "Vime source not found: $VIME_ROOT"
 [[ -d "$MEGATRON_ROOT" ]] || fail "Megatron source not found: $MEGATRON_ROOT"
 [[ -d "$REF_CHECKPOINT" ]] || fail "Converted checkpoint not found: $REF_CHECKPOINT"
@@ -236,7 +244,7 @@ source scripts/models/qwen3.5-9B.sh
   --node-ip-address 127.0.0.1 \
   --port "$RAY_PORT" \
   --dashboard-port "$RAY_DASHBOARD_PORT" \
-  --num-gpus 6 \
+  --num-gpus "$TOTAL_GPUS" \
   --disable-usage-stats
 ray_started=1
 

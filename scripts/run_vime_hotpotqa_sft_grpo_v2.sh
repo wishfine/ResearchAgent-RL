@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # GRPO v2: continue actor and KL reference from the validated SFT-874 policy.
 #
-# GPU topology is owned by run_vime_hotpotqa_smoke6.sh:
-# GPUs 2-5 actor (TP=2, DP=2); GPUs 6-7 rollout vLLM (TP=2).
+# Default GPU topology: GPUs 2-3 actor (TP=2, DP=1); GPUs 4-5 rollout vLLM
+# (TP=2).  GPUs 0-1 and 6-7 remain available to other users/workloads.
 
 set -euo pipefail
 
@@ -22,13 +22,16 @@ export REF_CHECKPOINT="$SFT_CHECKPOINTS"
 export ACTOR_LOAD="$SFT_CHECKPOINTS"
 export CKPT_STEP="${CKPT_STEP:-874}"
 
-# One rollout group has one prompt and four policy samples; this supplies an
-# actual within-group GRPO comparison while retaining the validated topology.
+# One rollout group has one prompt and eight policy samples, giving GRPO a
+# materially more useful within-group ranking signal than the old group size 4.
+export GPU_IDS="${GPU_IDS:-2,3,4,5}"
+export ACTOR_GPUS="${ACTOR_GPUS:-2}"
+export ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
 export NUM_ROLLOUT="${NUM_ROLLOUT:-100}"
 export ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-1}"
-export N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-4}"
+export N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-8}"
 export MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
-export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-4}"
+export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
 export VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 export SAVE_INTERVAL="${SAVE_INTERVAL:-25}"
 
