@@ -60,6 +60,15 @@ class TestRerankAndCiteTools(unittest.TestCase):
         self.assertFalse(done)
         self.assertEqual(observation.invalid_action_count, 1)
 
+    def test_read_rejects_chunk_not_returned_by_search(self):
+        self.env.reset(self.task)
+
+        observation, done, _ = self.env.step(Action.read(["strong"]))
+
+        self.assertFalse(done)
+        self.assertEqual(observation.invalid_action_count, 1)
+        self.assertEqual(observation.read_summaries, [])
+
 
 if __name__ == "__main__":
     unittest.main()

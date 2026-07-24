@@ -161,6 +161,7 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
         "cited_chunk_ids": episode_result.cited_chunk_ids,
         "steps_count": step_count,
         "invalid_action_count": env._state.invalid_action_count,
+        "valid_action_count": sum(step.is_valid for step in env._state.trajectory),
         "task_id": task_id,
         "ground_truth_answer": ground_truth_answer,
         "ground_truth_citations": ground_truth_citations

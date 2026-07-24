@@ -17,6 +17,34 @@ class ReadTool(BaseTool):
         if corpus is None:
             return ToolResult(success=False, error="Corpus not available")
 
+        # READ is deliberately capability-scoped: a model may only open a
+        # chunk that a preceding SEARCH exposed for this task.  Merely
+        # guessing a corpus-wide chunk ID must not bypass retrieval or leak
+        # evidence from another task split.
+        candidate_ids = {candidate.chunk_id for candidate in state.candidate_chunks}
+        not_returned_by_search = [chunk_id for chunk_id in chunk_ids if chunk_id not in candidate_ids]
+        if not_returned_by_search:
+            raise ValueError(
+                "READ requires chunk_ids returned by SEARCH first: "
+                f"{not_returned_by_search[:5]}"
+            )
+
+        # SEARCH normally already enforces this restriction.  Keep a second
+        # check here so future search implementations cannot accidentally
+        # widen the task's document boundary.
+        allowed_doc_ids = set(state.task.reference_docs)
+        if allowed_doc_ids:
+            out_of_scope = [
+                chunk_id
+                for chunk_id in chunk_ids
+                if chunk_id not in corpus or corpus.chunks[chunk_id].doc_id not in allowed_doc_ids
+            ]
+            if out_of_scope:
+                raise ValueError(
+                    "READ requires chunk_ids from this task's reference_docs: "
+                    f"{out_of_scope[:5]}"
+                )
+
         chunks = corpus.get_chunks(chunk_ids)
         if not chunks:
             return ToolResult(success=False, error=f"No chunks found for IDs: {chunk_ids}")

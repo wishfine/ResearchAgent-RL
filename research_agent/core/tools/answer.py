@@ -22,10 +22,7 @@ class AnswerTool(BaseTool):
             invalid_ids = [cid for cid in cited_chunk_ids if cid not in corpus]
 
         if invalid_ids:
-            return ToolResult(
-                success=False,
-                error=f"Invalid chunk IDs cited: {invalid_ids[:5]}",
-            )
+            raise ValueError(f"Invalid chunk IDs cited: {invalid_ids[:5]}")
 
         uncited_ids = [cid for cid in cited_chunk_ids if cid not in state.cited_chunks]
         if uncited_ids:

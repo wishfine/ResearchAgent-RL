@@ -1,22 +1,14 @@
 from __future__ import annotations
+from collections import Counter
 from typing import Any
 import os
 import re
-import string
 
 from ...core.schema.parser import ActionParser
 
 def normalize_answer(s: str) -> str:
-    def remove_articles(text):
-        return re.sub(r'\b(a|an|the)\b', ' ', text)
-    def white_space_fix(text):
-        return ' '.join(text.split())
-    def remove_punc(text):
-        exclude = set(string.punctuation)
-        return ''.join(ch for ch in text if ch not in exclude)
-    def lower(text):
-        return text.lower()
-    return white_space_fix(remove_articles(remove_punc(lower(s))))
+    """Match the token normalization used by offline baseline evaluation."""
+    return " ".join(re.findall(r"\w+", (s or "").lower()))
 
 def compute_token_f1(prediction: str, ground_truth: str) -> float:
     pred_tokens = normalize_answer(prediction).split()
@@ -25,12 +17,12 @@ def compute_token_f1(prediction: str, ground_truth: str) -> float:
     if not pred_tokens or not gt_tokens:
         return 1.0 if pred_tokens == gt_tokens else 0.0
         
-    common = set(pred_tokens) & set(gt_tokens)
+    common = sum((Counter(pred_tokens) & Counter(gt_tokens)).values())
     if not common:
         return 0.0
         
-    precision = len(common) / len(pred_tokens)
-    recall = len(common) / len(gt_tokens)
+    precision = common / len(pred_tokens)
+    recall = common / len(gt_tokens)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
@@ -39,7 +31,7 @@ def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list
     gt_clean = normalize_answer(ground_truth_answer) if ground_truth_answer else ""
     
     exact_match = 1.0 if ans_clean == gt_clean else 0.0
-    contains = 1.0 if gt_clean in ans_clean else 0.0
+    contains = 1.0 if gt_clean and gt_clean in ans_clean else 0.0
     token_f1 = compute_token_f1(final_answer, ground_truth_answer)
 
     cited_set = set(cited_ids)
@@ -54,6 +46,7 @@ def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list
         "exact_match": exact_match,
         "contains": contains,
         "token_f1": token_f1,
+        "answer_quality": max(contains, token_f1),
         "citation_f1": citation_f1
     }
 
@@ -117,19 +110,28 @@ async def custom_rm(args: Any, sample: Any) -> float:
     # 3. Compute accuracy and citation metrics
     metrics = compute_metrics(final_answer, ground_truth_answer, cited_ids, ground_truth_citations)
 
-    # 4. Score answer quality and action protocol separately.  The latter is
-    # essential for GRPO: without it an invalid trajectory can be nearly tied
-    # with a grounded one when the group contains no correct answer.
-    contains = metrics.get("contains", 0.0)
-    token_f1 = metrics.get("token_f1", 0.0)
+    # 4. Score answer quality and action protocol separately.  Use the same
+    # answer-quality definition as ``baseline_runner.evaluate_episode`` so
+    # GRPO optimizes the reported evaluation target instead of a subtly
+    # different, double-counted surrogate.
+    answer_quality = metrics.get("answer_quality", 0.0)
     citation_f1 = metrics.get("citation_f1", 0.0)
     invalid_penalty = float_setting("invalid_penalty", "RESEARCH_AGENT_INVALID_ACTION_PENALTY", 0.05)
     step_penalty = float_setting("step_penalty", "RESEARCH_AGENT_STEP_PENALTY", 0.01)
     format_reward = float_setting("format_reward", "RESEARCH_AGENT_FORMAT_REWARD", 0.0)
+    no_answer_penalty = float_setting("no_answer_penalty", "RESEARCH_AGENT_NO_ANSWER_PENALTY", 0.20)
     format_valid_rate = valid_action_count / steps_count if steps_count else 0.0
+    done_reason = metadata.get("done_reason", "")
+    answer_submitted = done_reason == "answer_submitted" or bool((final_answer or "").strip())
 
-    score = (1.0 * contains) + (0.5 * token_f1) + (0.5 * citation_f1)
-    score += format_reward * format_valid_rate
+    score = answer_quality + (0.5 * citation_f1)
+    # A valid-looking SEARCH/READ/CITE loop is useful only if it culminates in
+    # a valid answer.  Otherwise it used to earn positive reward merely for
+    # consuming steps with syntactically valid actions.
+    if answer_submitted:
+        score += format_reward * format_valid_rate
+    else:
+        score -= no_answer_penalty
     score -= invalid_penalty * invalid_action_count
     score -= step_penalty * steps_count
 
