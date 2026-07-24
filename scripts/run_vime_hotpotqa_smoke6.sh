@@ -310,8 +310,9 @@ if [[ -n "$ACTOR_LOAD" ]]; then
   CKPT_ARGS+=(--load "$ACTOR_LOAD")
   if [[ "$ACTOR_LOAD_RESET_TRAINING_STATE" == "1" ]]; then
     # Fine-tune from the checkpoint's model weights, but deliberately start a
-    # new optimizer/scheduler/RNG state instead of resuming the prior phase.
-    CKPT_ARGS+=(--no-load-optim --no-load-rng)
+    # new optimizer/scheduler/RNG state and reset the checkpoint iteration to
+    # zero instead of treating the prior phase as a resumed training run.
+    CKPT_ARGS+=(--finetune --no-load-optim --no-load-rng)
   fi
 fi
 if [[ -n "$CKPT_STEP" ]]; then

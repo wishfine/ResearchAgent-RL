@@ -22,7 +22,8 @@ export REF_CHECKPOINT="$SFT_CHECKPOINTS"
 export ACTOR_LOAD="$SFT_CHECKPOINTS"
 export CKPT_STEP="${CKPT_STEP:-874}"
 # This is a new GRPO optimization phase, not an SFT continuation.  Keep the
-# SFT model tensors, but create fresh GRPO Adam/RNG state.
+# SFT model tensors, but create fresh GRPO Adam/RNG state and restart its
+# iteration counter from zero.
 export ACTOR_LOAD_RESET_TRAINING_STATE=1
 
 # One rollout group has one prompt and eight policy samples, giving GRPO a
