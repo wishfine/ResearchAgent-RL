@@ -38,6 +38,10 @@ export MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
 export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
 export VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 export SAVE_INTERVAL="${SAVE_INTERVAL:-25}"
+# With only two actor ranks, fp32 Adam moments exceed a single A800 once the
+# first optimizer step lazily materializes them.  BF16 moment storage cuts
+# their footprint in half while retaining the full model and group size eight.
+export OPTIMIZER_STATE_DTYPE="${OPTIMIZER_STATE_DTYPE:-bf16}"
 
 # The first base-model GRPO run used KL=0 and lost strict action formatting.
 # Keep valid formatted trajectories distinguishable from invalid ones and

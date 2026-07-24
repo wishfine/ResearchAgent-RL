@@ -45,6 +45,10 @@ MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
 GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-2}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-9999}"
 VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
+# Default to standard FP32 Adam moments.  A constrained topology can opt in to
+# BF16 moment storage with OPTIMIZER_STATE_DTYPE=bf16; Megatron's
+# precision-aware optimizer retains FP32 arithmetic in its update kernels.
+OPTIMIZER_STATE_DTYPE="${OPTIMIZER_STATE_DTYPE:-fp32}"
 # Keep packed transfer enabled for ordinary runs.  It can be disabled for a
 # controlled weight-sync diagnosis without changing the model, topology, or
 # NCCL transport.
@@ -120,6 +124,8 @@ fi
 (( GLOBAL_BATCH_SIZE >= N_SAMPLES_PER_PROMPT )) || fail "GLOBAL_BATCH_SIZE must cover N_SAMPLES_PER_PROMPT"
 [[ "$SAVE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail "SAVE_INTERVAL must be a positive integer"
 [[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
+[[ "$OPTIMIZER_STATE_DTYPE" =~ ^(fp32|fp16|bf16)$ ]] || \
+  fail "OPTIMIZER_STATE_DTYPE must be fp32, fp16, or bf16"
 [[ "$VLLM_WEIGHT_SYNC_PACKED" =~ ^[01]$ ]] || fail "VLLM_WEIGHT_SYNC_PACKED must be 0 or 1"
 [[ "$MEGATRON_TO_HF_MODE" == "raw" || "$MEGATRON_TO_HF_MODE" == "bridge" ]] || \
   fail "MEGATRON_TO_HF_MODE must be raw or bridge"
@@ -370,6 +376,17 @@ OPTIMIZER_ARGS=(
   --adam-beta1 0.9
   --adam-beta2 0.98
 )
+if [[ "$OPTIMIZER_STATE_DTYPE" != "fp32" ]]; then
+  # The 9B actor with TP=2 cannot hold full FP32 Adam moments alongside model,
+  # gradients and rollout-facing buffers on a single 80 GiB A800.  This
+  # switches only moment storage; Transformer Engine performs the update in
+  # its supported precision-aware optimizer path.
+  OPTIMIZER_ARGS+=(
+    --use-precision-aware-optimizer
+    --exp-avg-dtype "$OPTIMIZER_STATE_DTYPE"
+    --exp-avg-sq-dtype "$OPTIMIZER_STATE_DTYPE"
+  )
+fi
 
 VLLM_ARGS=(
   --rollout-num-gpus-per-engine 2
@@ -403,6 +420,7 @@ echo "vLLM logging level: $VLLM_LOGGING_LEVEL"
 echo "Vime weight-sync trainer trace: $VIME_WEIGHT_SYNC_TRACE"
 echo "Vime weight-sync name mode: $VIME_WEIGHT_SYNC_NAME_MODE"
 echo "Vime weight-sync transport: $UPDATE_WEIGHT_TRANSPORT"
+echo "Adam moment storage dtype: $OPTIMIZER_STATE_DTYPE"
 if [[ -n "$ACTOR_LOAD" ]]; then
   echo "Actor checkpoint load: $ACTOR_LOAD (reset training state: $ACTOR_LOAD_RESET_TRAINING_STATE)"
 fi
