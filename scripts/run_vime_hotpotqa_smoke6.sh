@@ -21,6 +21,12 @@ CUDA_HOME="${CUDA_HOME:-/data/$USER/cuda-toolkit-12.9/usr/local/cuda-12.9}"
 
 HF_CHECKPOINT="${HF_CHECKPOINT:-/home/$USER/models/models/Qwen--Qwen3.5-9B/snapshots/master}"
 REF_CHECKPOINT="${REF_CHECKPOINT:-$BASE/checkpoints/Qwen3.5-9B_torch_dist_v4_noapex}"
+# ``--ref-load`` owns the frozen KL reference.  An optional ``--load`` lets
+# bounded RL continue from an SFT actor checkpoint instead of the base model.
+# Vime expects the parent checkpoint directory (the one containing
+# latest_checkpointed_iteration.txt), not an iter_000xxxx child directory.
+ACTOR_LOAD="${ACTOR_LOAD:-}"
+CKPT_STEP="${CKPT_STEP:-}"
 PROMPT_DATA="${PROMPT_DATA:-$BASE/slime_data/hotpotqa_train_7k.jsonl}"
 CORPUS_DIR="${CORPUS_DIR:-$BASE/hotpotqa_7k3k/corpus/train}"
 RUN_DIR="${RUN_DIR:-$BASE/outputs/vime_hotpotqa_smoke6_$(date +%Y%m%d_%H%M%S)}"
@@ -82,6 +88,12 @@ IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ -d "$VIME_ROOT" ]] || fail "Vime source not found: $VIME_ROOT"
 [[ -d "$MEGATRON_ROOT" ]] || fail "Megatron source not found: $MEGATRON_ROOT"
 [[ -d "$REF_CHECKPOINT" ]] || fail "Converted checkpoint not found: $REF_CHECKPOINT"
+if [[ -n "$ACTOR_LOAD" ]]; then
+  [[ -d "$ACTOR_LOAD" ]] || fail "Actor load checkpoint not found: $ACTOR_LOAD"
+fi
+if [[ -n "$CKPT_STEP" ]]; then
+  [[ "$CKPT_STEP" =~ ^[0-9]+$ ]] || fail "CKPT_STEP must be a non-negative integer"
+fi
 [[ -f "$PROMPT_DATA" ]] || fail "Prompt data not found: $PROMPT_DATA"
 [[ -d "$CORPUS_DIR" ]] || fail "Corpus not found: $CORPUS_DIR"
 [[ -x "$TRAIN_ENV/bin/python" ]] || fail "Training Python not found: $TRAIN_ENV/bin/python"
@@ -279,6 +291,12 @@ CKPT_ARGS=(
   --save "$RUN_DIR/checkpoints"
   --save-interval "$SAVE_INTERVAL"
 )
+if [[ -n "$ACTOR_LOAD" ]]; then
+  CKPT_ARGS+=(--load "$ACTOR_LOAD")
+fi
+if [[ -n "$CKPT_STEP" ]]; then
+  CKPT_ARGS+=(--ckpt-step "$CKPT_STEP")
+fi
 
 ROLLOUT_ARGS=(
   --rollout-function-path vime.rollout.fully_async_rollout.generate_rollout_fully_async
