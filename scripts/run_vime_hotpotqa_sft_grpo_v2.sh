@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # GRPO v2: continue actor and KL reference from the validated SFT-874 policy.
 #
-# Default GPU topology: GPUs 4-5 actor (TP=2, DP=1); GPUs 6-7 rollout vLLM
-# (TP=2). GPUs 0-3 remain available to other users/workloads.
+# Default GPU topology: GPUs 2-5 actor (TP=2, DP=2); GPUs 6-7 rollout vLLM
+# (TP=2).  DP=2 shards the distributed optimizer state across two actor data
+# parallel replicas, which is required for full-parameter 9B GRPO.
 
 set -euo pipefail
 
@@ -28,8 +29,8 @@ export ACTOR_LOAD_RESET_TRAINING_STATE=1
 
 # One rollout group has one prompt and eight policy samples, giving GRPO a
 # materially more useful within-group ranking signal than the old group size 4.
-export GPU_IDS="${GPU_IDS:-4,5,6,7}"
-export ACTOR_GPUS="${ACTOR_GPUS:-2}"
+export GPU_IDS="${GPU_IDS:-2,3,4,5,6,7}"
+export ACTOR_GPUS="${ACTOR_GPUS:-4}"
 export ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
 export NUM_ROLLOUT="${NUM_ROLLOUT:-100}"
 export ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-1}"
@@ -38,14 +39,11 @@ export MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
 export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
 export VLLM_SERVER_CONCURRENCY="${VLLM_SERVER_CONCURRENCY:-1}"
 export SAVE_INTERVAL="${SAVE_INTERVAL:-25}"
-# With only two actor ranks, fp32 Adam moments exceed a single A800 once the
-# first optimizer step lazily materializes them.  BF16 moment storage cuts
-# their footprint in half while retaining the full model and group size eight.
+# BF16 moments retain substantial headroom at 9B even while the full actor,
+# frozen KL reference, and rollout-facing state coexist on each actor rank.
 export OPTIMIZER_STATE_DTYPE="${OPTIMIZER_STATE_DTYPE:-bf16}"
-# Actor TP=2/DP=1 has no data-parallel peers to all-reduce with.  Avoid the
-# otherwise full-size FP32 accumulation buffer; BF16 gradients are enough for
-# this bounded, KL-regularized SFT->GRPO phase and leave room for TE's
-# precision-aware optimizer remainder state.
+# BF16 gradients are sufficient for this bounded, KL-regularized phase and
+# avoid allocating an unnecessary full FP32 accumulation buffer.
 export ACCUMULATE_ALLREDUCE_GRADS_IN_FP32="${ACCUMULATE_ALLREDUCE_GRADS_IN_FP32:-0}"
 
 # The first base-model GRPO run used KL=0 and lost strict action formatting.
