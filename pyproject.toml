@@ -10,6 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+benchmark = ["datasets>=2.18"]
 dev = ["pytest>=7.0", "ruff>=0.1"]
 
 [build-system]

@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_008",
+  "task_type": "survey_synthesis",
+  "user_query": "Which ocean is the largest on Earth?",
+  "ground_truth_answer": "Pacific Ocean",
+  "ground_truth_citations": [
+    "largest_ocean"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

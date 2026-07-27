@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_002",
+  "task_type": "survey_synthesis",
+  "user_query": "Who wrote the play Romeo and Juliet?",
+  "ground_truth_answer": "William Shakespeare",
+  "ground_truth_citations": [
+    "romeo_juliet_author"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

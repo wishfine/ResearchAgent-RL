@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_007",
+  "task_type": "survey_synthesis",
+  "user_query": "What is the tallest mountain in the world?",
+  "ground_truth_answer": "Mount Everest",
+  "ground_truth_citations": [
+    "tallest_mountain"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}
