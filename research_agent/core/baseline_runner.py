@@ -24,9 +24,12 @@ def _token_f1(prediction: str, reference: str) -> float:
 
 
 def _contains_reference(prediction: str, reference: str) -> float:
-    predicted = " ".join(re.findall(r"\w+", (prediction or "").lower()))
-    expected = " ".join(re.findall(r"\w+", (reference or "").lower()))
-    return float(bool(expected) and expected in predicted)
+    predicted = re.findall(r"\w+", (prediction or "").lower())
+    expected = re.findall(r"\w+", (reference or "").lower())
+    return float(bool(expected) and any(
+        predicted[index:index + len(expected)] == expected
+        for index in range(len(predicted) - len(expected) + 1)
+    ))
 
 
 def evaluate_episode(
@@ -47,8 +50,9 @@ def evaluate_episode(
         if citation_precision + citation_recall
         else 0.0
     )
-    answer_token_f1 = _token_f1(episode.final_answer, task.ground_truth_answer or "")
-    answer_contains = _contains_reference(episode.final_answer, task.ground_truth_answer or "")
+    references = [task.ground_truth_answer or "", *task.ground_truth_answer_aliases]
+    answer_token_f1 = max(_token_f1(episode.final_answer, reference) for reference in references)
+    answer_contains = max(_contains_reference(episode.final_answer, reference) for reference in references)
     # Toy QA references are often short entities.  A complete generated answer
     # should not be scored below threshold merely because it contains context.
     answer_quality = max(answer_token_f1, answer_contains)
@@ -68,7 +72,8 @@ def evaluate_episode(
     action_parse_success_rate = (
         parsed_action_count / action_attempt_count if action_attempt_count else 0.0
     )
-    task_success = answer_quality >= 0.5 and citation_recall >= 0.3
+    required_recall = 1.0 if task.retrieval_scope == "split_corpus" else 0.3
+    task_success = answer_quality >= 0.5 and citation_recall >= required_recall
     reward = (
         answer_quality
         + 0.5 * citation_f1
@@ -102,7 +107,7 @@ def run_episode(
 ) -> dict:
     """Run one LLM-controlled environment episode and return a JSONL-ready record."""
     observation = env.reset(task)
-    collector = ConversationCollector()
+    collector = ConversationCollector(multi_hop=task.retrieval_scope == "split_corpus")
     collector.add_user_message(task.user_query)
     steps: list[dict] = []
     total_latency = 0.0

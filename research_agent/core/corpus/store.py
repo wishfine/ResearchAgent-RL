@@ -1,6 +1,8 @@
 from __future__ import annotations
 import os
 import json
+import re
+import sqlite3
 import sys
 from typing import List, Dict, Optional, Set
 from research_agent.core.schema.document import Chunk, Document, CandidateChunk
@@ -22,10 +24,38 @@ class CorpusStore:
         # BM25 specific
         self.bm25: Optional[BM25Okapi] = None
         self.bm25_chunk_ids: List[str] = []
+        self._sqlite: Optional[sqlite3.Connection] = None
+        self._sqlite_count = 0
+
+    def close(self) -> None:
+        if getattr(self, "_sqlite", None) is not None:
+            self._sqlite.close()
+            self._sqlite = None
+            self._sqlite_count = 0
+
+    def __del__(self) -> None:
+        self.close()
 
     def load(self) -> None:
-        """Loads all JSON files under corpus_dir."""
+        """Open a pooled SQLite index or load the legacy JSON corpus."""
         if not os.path.exists(self.corpus_dir):
+            return
+
+        # Pooled multi-hop corpora are indexed on disk. Loading every passage
+        # into Python and scoring the entire split for each SEARCH is too slow
+        # for RL rollouts, and makes every Ray worker duplicate the index.
+        index_path = os.path.join(self.corpus_dir, "corpus.sqlite")
+        if os.path.isfile(index_path):
+            self._sqlite = sqlite3.connect(
+                f"file:{index_path}?mode=ro", uri=True, check_same_thread=False
+            )
+            self._sqlite.row_factory = sqlite3.Row
+            ready = self._sqlite.execute(
+                "SELECT value FROM index_metadata WHERE key = 'complete'"
+            ).fetchone()
+            if ready is None or ready[0] != "1":
+                raise ValueError(f"Corpus index is incomplete: {index_path}")
+            self._sqlite_count = self._sqlite.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
             return
 
         for filename in os.listdir(self.corpus_dir):
@@ -84,15 +114,76 @@ class CorpusStore:
         self._doc_ids.add(chunk.doc_id)
 
     def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
+        if self._sqlite is not None:
+            row = self._sqlite.execute(
+                "SELECT chunk_id, doc_id, title, content FROM chunks WHERE chunk_id = ?",
+                (chunk_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return Chunk(
+                chunk_id=row["chunk_id"], doc_id=row["doc_id"],
+                title=row["title"], content=row["content"],
+                char_start=0, char_end=len(row["content"]),
+            )
         return self.chunks.get(chunk_id)
 
     def get_chunks(self, chunk_ids: List[str]) -> List[Chunk]:
-        return [self.chunks[cid] for cid in chunk_ids if cid in self.chunks]
+        chunks = [self.get_chunk(cid) for cid in chunk_ids]
+        return [chunk for chunk in chunks if chunk is not None]
+
+    @staticmethod
+    def _query_terms(query: str) -> List[str]:
+        # FTS5's unicode61 tokenizer splits on punctuation. Quote each term
+        # before composing MATCH so a model-generated query is data, not SQL.
+        stopwords = {
+            "a", "an", "and", "are", "as", "at", "be", "by", "did", "do",
+            "does", "for", "from", "how", "in", "is", "it", "of", "on",
+            "or", "the", "to", "was", "were", "what", "when", "where",
+            "which", "who", "why", "with",
+        }
+        terms = [term.casefold() for term in re.findall(r"[^\W_]+", query, re.UNICODE)]
+        terms = list(dict.fromkeys(term for term in terms if term not in stopwords))
+        return (terms or list(dict.fromkeys(re.findall(r"[^\W_]+", query.casefold()))))[:24]
+
+    def _search_sqlite(
+        self, query: str, topk: int, doc_ids: Optional[List[str]]
+    ) -> List[CandidateChunk]:
+        if topk <= 0 or doc_ids == []:
+            return []
+        terms = self._query_terms(query)
+        if not terms:
+            return []
+        match = " OR ".join(f'"{term}"' for term in terms)
+        scope = ""
+        arguments: list = [match]
+        if doc_ids is not None:
+            scope = f" AND chunks.doc_id IN ({','.join('?' for _ in doc_ids)})"
+            arguments.extend(doc_ids)
+        arguments.append(topk)
+        rows = self._sqlite.execute(
+            "SELECT chunks.chunk_id, chunks.doc_id, chunks.title, chunks.content, "
+            "bm25(chunk_fts, 5.0, 1.0) AS score "
+            "FROM chunk_fts JOIN chunks ON chunks.rowid = chunk_fts.rowid "
+            f"WHERE chunk_fts MATCH ?{scope} "
+            "ORDER BY score ASC, chunks.chunk_id ASC LIMIT ?",
+            arguments,
+        ).fetchall()
+        return [
+            CandidateChunk(
+                chunk_id=row["chunk_id"], doc_id=row["doc_id"],
+                score=-float(row["score"]), rank=rank, query=query,
+                title=row["title"], snippet=row["content"][:200],
+            )
+            for rank, row in enumerate(rows, start=1)
+        ]
 
     def search_simple(
         self, query: str, topk: int = 10, doc_ids: Optional[List[str]] = None
     ) -> List[CandidateChunk]:
         """Simple substring frequency count search."""
+        if self._sqlite is not None:
+            return self._search_sqlite(query, topk, doc_ids)
         query_terms = query.lower().split()
         scores: Dict[str, float] = {}
 
@@ -142,6 +233,8 @@ class CorpusStore:
         self, query: str, topk: int = 10, doc_ids: Optional[List[str]] = None
     ) -> List[CandidateChunk]:
         """Performs search. Prefers BM25 if available, otherwise falls back to simple search."""
+        if self._sqlite is not None:
+            return self._search_sqlite(query, topk, doc_ids)
         if HAS_BM25 and self.bm25 is not None:
             query_tokens = query.lower().split()
             scores = self.bm25.get_scores(query_tokens)
@@ -179,7 +272,9 @@ class CorpusStore:
             return self.search_simple(query, topk=topk, doc_ids=doc_ids)
 
     def __len__(self) -> int:
-        return len(self.chunks)
+        return self._sqlite_count if self._sqlite is not None else len(self.chunks)
 
     def __contains__(self, chunk_id: str) -> bool:
+        if self._sqlite is not None:
+            return self.get_chunk(chunk_id) is not None
         return chunk_id in self._chunk_ids

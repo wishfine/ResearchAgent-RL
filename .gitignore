@@ -14,3 +14,4 @@ outputs/*
 !outputs/trajectories/.gitkeep
 data/searchqa_debug/rollout_dataset.jsonl
 data/hotpotqa_*/
+data/musique_*/

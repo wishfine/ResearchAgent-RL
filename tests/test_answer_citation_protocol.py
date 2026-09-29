@@ -19,9 +19,13 @@ class TestAnswerCitationProtocol(unittest.TestCase):
         document = Document(doc_id="doc", title="Evidence")
         chunk = Chunk("evidence", "doc", "Canada has a maple leaf flag.", 0, 30)
         document.add_chunk(chunk)
+        bridge = Chunk("bridge", "doc", "Canada is in North America.", 0, 27)
+        document.add_chunk(bridge)
         self.corpus.docs["doc"] = document
         self.corpus.chunks["evidence"] = chunk
+        self.corpus.chunks["bridge"] = bridge
         self.corpus._chunk_ids.add("evidence")
+        self.corpus._chunk_ids.add("bridge")
         self.corpus._doc_ids.add("doc")
 
     def _make_env(self):
@@ -53,6 +57,19 @@ class TestAnswerCitationProtocol(unittest.TestCase):
         self.assertFalse(done)
         self.assertEqual(observation.invalid_action_count, 1)
         self.assertIsNone(observation.final_answer)
+
+    def test_final_citations_are_answer_citations(self):
+        env = self._make_env()
+        task = TaskSample("task", TaskType.SURVEY_SYNTHESIS, "Which country?", Rubric())
+        env.reset(task)
+        env.step(Action.search("Canada", topk=2))
+        env.step(Action.read(["evidence", "bridge"]))
+        env.step(Action.cite(["evidence", "bridge"], ["Canada is supported."]))
+        _, done, reason = env.step(Action.answer("Canada", ["evidence"]))
+
+        self.assertTrue(done)
+        self.assertEqual(reason, "answer_submitted")
+        self.assertEqual(env.finalize_episode().cited_chunk_ids, ["evidence"])
 
 
 if __name__ == "__main__":

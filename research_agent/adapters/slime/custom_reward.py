@@ -26,13 +26,22 @@ def compute_token_f1(prediction: str, ground_truth: str) -> float:
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
-def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list[str], gt_citations: list[str]) -> dict:
+
+def _contains_reference(prediction: str, reference: str) -> float:
+    predicted = normalize_answer(prediction).split()
+    expected = normalize_answer(reference).split()
+    return float(bool(expected) and any(
+        predicted[index:index + len(expected)] == expected
+        for index in range(len(predicted) - len(expected) + 1)
+    ))
+
+def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list[str],
+                    gt_citations: list[str], answer_aliases: list[str] | None = None) -> dict:
     ans_clean = normalize_answer(final_answer) if final_answer else ""
-    gt_clean = normalize_answer(ground_truth_answer) if ground_truth_answer else ""
-    
-    exact_match = 1.0 if ans_clean == gt_clean else 0.0
-    contains = 1.0 if gt_clean and gt_clean in ans_clean else 0.0
-    token_f1 = compute_token_f1(final_answer, ground_truth_answer)
+    references = [ground_truth_answer, *(answer_aliases or [])]
+    exact_match = max(float(ans_clean == normalize_answer(reference)) for reference in references)
+    contains = max(_contains_reference(final_answer, reference) for reference in references)
+    token_f1 = max(compute_token_f1(final_answer, reference) for reference in references)
 
     cited_set = set(cited_ids)
     gt_set = set(gt_citations)
@@ -47,6 +56,7 @@ def compute_metrics(final_answer: str, ground_truth_answer: str, cited_ids: list
         "contains": contains,
         "token_f1": token_f1,
         "answer_quality": max(contains, token_f1),
+        "citation_recall": recall,
         "citation_f1": citation_f1
     }
 
@@ -79,6 +89,9 @@ async def custom_rm(args: Any, sample: Any) -> float:
     ground_truth_citations = get_val(sample, "ground_truth_citations", []) or metadata.get(
         "ground_truth_citations", []
     )
+    answer_aliases = get_val(sample, "ground_truth_answer_aliases", []) or metadata.get(
+        "ground_truth_answer_aliases", []
+    )
 
     # 2. Extract final answer and citations
     final_answer = metadata.get("final_answer", None)
@@ -108,7 +121,9 @@ async def custom_rm(args: Any, sample: Any) -> float:
             cited_ids = []
 
     # 3. Compute accuracy and citation metrics
-    metrics = compute_metrics(final_answer, ground_truth_answer, cited_ids, ground_truth_citations)
+    metrics = compute_metrics(
+        final_answer, ground_truth_answer, cited_ids, ground_truth_citations, answer_aliases
+    )
 
     # 4. Score answer quality and action protocol separately.  Use the same
     # answer-quality definition as ``baseline_runner.evaluate_episode`` so
@@ -124,7 +139,13 @@ async def custom_rm(args: Any, sample: Any) -> float:
     done_reason = metadata.get("done_reason", "")
     answer_submitted = done_reason == "answer_submitted" or bool((final_answer or "").strip())
 
-    score = answer_quality + (0.5 * citation_f1)
+    if metadata.get("retrieval_scope") == "split_corpus":
+        # In a pooled 2–4 hop corpus, naming the answer with only one cited
+        # passage should not earn the full answer reward. Preserve a dense
+        # partial signal while reserving the maximum for all-hop grounding.
+        score = answer_quality * metrics["citation_recall"] + (0.5 * citation_f1)
+    else:
+        score = answer_quality + (0.5 * citation_f1)
     # A valid-looking SEARCH/READ/CITE loop is useful only if it culminates in
     # a valid answer.  Otherwise it used to earn positive reward merely for
     # consuming steps with syntactically valid actions.

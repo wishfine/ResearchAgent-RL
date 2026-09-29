@@ -165,6 +165,34 @@ class TestSlimeAdapter(unittest.TestCase):
         # Deductions: 3 steps * 0.01 = 0.03
         self.assertAlmostEqual(reward, 1.47, places=4)
 
+    def test_multihop_reward_requires_all_support_for_full_answer_credit(self):
+        sample = {
+            "metadata": {
+                "retrieval_scope": "split_corpus",
+                "ground_truth_answer": "Morgan",
+                "ground_truth_citations": ["first", "second"],
+                "final_answer": "Morgan",
+                "cited_chunk_ids": ["first"],
+                "done_reason": "answer_submitted",
+                "steps_count": 4,
+                "invalid_action_count": 0,
+            }
+        }
+        partial = self.loop.run_until_complete(custom_rm(self.args, sample))
+        sample["metadata"]["cited_chunk_ids"] = ["first", "second"]
+        complete = self.loop.run_until_complete(custom_rm(self.args, sample))
+        self.assertLess(partial, complete)
+        self.assertAlmostEqual(complete, 1.46)
+
+    def test_reward_does_not_match_answer_as_substring_of_token(self):
+        sample = {"metadata": {
+            "ground_truth_answer": "1", "ground_truth_citations": ["source"],
+            "final_answer": "2011", "cited_chunk_ids": ["source"],
+            "done_reason": "answer_submitted", "steps_count": 1,
+        }}
+        reward = self.loop.run_until_complete(custom_rm(self.args, sample))
+        self.assertAlmostEqual(reward, 0.49)
+
     def test_custom_reward_reads_verifier_fields_from_metadata(self):
         """The Vime dataset converter deliberately keeps task fields in metadata."""
         sample = {

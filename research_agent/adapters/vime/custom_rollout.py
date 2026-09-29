@@ -94,6 +94,8 @@ def _task_from_sample(sample: Any) -> tuple[TaskSample, dict[str, Any]]:
             ground_truth_answer=answer,
             ground_truth_citations=citations,
             reference_docs=reference_docs,
+            retrieval_scope=metadata.get("retrieval_scope", "task_docs"),
+            ground_truth_answer_aliases=metadata.get("ground_truth_answer_aliases", []),
         ),
         metadata,
     )
@@ -128,7 +130,7 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict[str, Any
     task, metadata = _task_from_sample(sample)
     env = _make_env(args)
     env.reset(task)
-    collector = ConversationCollector()
+    collector = ConversationCollector(multi_hop=task.retrieval_scope == "split_corpus")
     collector.add_user_message(task.user_query)
 
     state = GenerateState(args)

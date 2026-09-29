@@ -141,6 +141,26 @@ class TestBaselineRunner(unittest.TestCase):
         self.assertEqual(metrics["action_parse_success_rate"], 1.0)
         self.assertEqual(metrics["invalid_action_rate"], 0.25)
 
+    def test_multihop_success_requires_every_support_and_accepts_alias(self):
+        self.task.retrieval_scope = "split_corpus"
+        self.task.ground_truth_answer = "Morgan Smith"
+        self.task.ground_truth_answer_aliases = ["M. Smith"]
+        self.task.ground_truth_citations = ["first", "second"]
+        episode = EpisodeResult(
+            task_id="canada", final_answer="M. Smith",
+            cited_chunk_ids=["first"], total_steps=4,
+        )
+        partial = evaluate_episode(episode, self.task, [])
+        self.assertEqual(partial["answer_quality"], 1.0)
+        self.assertFalse(partial["task_success"])
+        episode.cited_chunk_ids.append("second")
+        self.assertTrue(evaluate_episode(episode, self.task, [])["task_success"])
+
+    def test_answer_containment_respects_token_boundaries(self):
+        self.task.ground_truth_answer = "1"
+        episode = EpisodeResult(task_id="canada", final_answer="2011", total_steps=1)
+        self.assertEqual(evaluate_episode(episode, self.task, [])["answer_quality"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

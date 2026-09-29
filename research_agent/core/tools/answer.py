@@ -31,9 +31,12 @@ class AnswerTool(BaseTool):
                 f"{uncited_ids[:5]}"
             )
 
-        # Record answer and update cited_chunks
+        # The episode's citations are the IDs attached to the final answer,
+        # not every ID mentioned in an earlier CITE action. Otherwise a model
+        # could CITE all gold passages and omit them from ANSWER while still
+        # receiving full citation credit.
         state.final_answer = answer_text
-        state.cite_chunks(cited_chunk_ids)
+        state.cited_chunks = list(dict.fromkeys(cited_chunk_ids))
 
         return ToolResult(
             success=True,

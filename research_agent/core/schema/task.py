@@ -43,6 +43,8 @@ class TaskSample:
     difficulty: str = "medium"
     context: str = ""
     expected_subgoals: int = 3
+    retrieval_scope: str = "task_docs"
+    ground_truth_answer_aliases: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -56,4 +58,6 @@ class TaskSample:
             "difficulty": self.difficulty,
             "context": self.context,
             "expected_subgoals": self.expected_subgoals,
+            "retrieval_scope": self.retrieval_scope,
+            "ground_truth_answer_aliases": self.ground_truth_answer_aliases,
         }

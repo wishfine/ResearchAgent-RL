@@ -37,7 +37,8 @@ class ReadTool(BaseTool):
             out_of_scope = [
                 chunk_id
                 for chunk_id in chunk_ids
-                if chunk_id not in corpus or corpus.chunks[chunk_id].doc_id not in allowed_doc_ids
+                if (chunk := corpus.get_chunk(chunk_id)) is None
+                or chunk.doc_id not in allowed_doc_ids
             ]
             if out_of_scope:
                 raise ValueError(

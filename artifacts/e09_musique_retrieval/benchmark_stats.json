@@ -1,0 +1,22 @@
+{
+  "format": "research-agent-musique-rl-v1",
+  "source": {
+    "dataset": "MuSiQue-Answerable v1.0",
+    "train_split": "train",
+    "eval_split": "dev",
+    "official_test_labels_available": false,
+    "train_sha256": "83a75b1e11e4e9bb8f8308e72ac40ca617ae4431b3a0d955b61cab259248490a",
+    "dev_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b"
+  },
+  "retrieval_scope": "split_corpus",
+  "train_tasks_count": 19938,
+  "eval_tasks_count": 2417,
+  "train_corpus_chunks": 83866,
+  "eval_corpus_chunks": 21100,
+  "train_hop_counts": {"2": 14376, "3": 4387, "4": 1175},
+  "eval_hop_counts": {"2": 1252, "3": 760, "4": 405},
+  "task_id_overlap_count": 0,
+  "supporting_passage_overlap_count": 0,
+  "eval_gold_excluded_from_train_corpus": 693,
+  "eval_gold_present_in_train_corpus": 0
+}

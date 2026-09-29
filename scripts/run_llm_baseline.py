@@ -36,6 +36,8 @@ def load_task(path: str) -> TaskSample:
         ground_truth_answer=raw.get("ground_truth_answer", ""),
         ground_truth_citations=raw.get("ground_truth_citations", []),
         reference_docs=raw.get("reference_docs", []),
+        retrieval_scope=raw.get("retrieval_scope", "task_docs"),
+        ground_truth_answer_aliases=raw.get("ground_truth_answer_aliases", []),
     )
 
 

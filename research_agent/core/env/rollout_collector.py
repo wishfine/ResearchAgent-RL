@@ -2,6 +2,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
+MULTIHOP_SYSTEM_PROMPT = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
+Return one action only: one JSON object wrapped in one pair of <action> and </action> tags.
+Do not emit <reasoning>, <think>, Markdown, prose before or after the action, placeholder text, or a second action.
+The JSON object must have `tool`, `intent`, and `params`. Valid params are: SEARCH(query, topk); READ(chunk_ids); RERANK(query, candidate_chunk_ids, topk); CITE(chunk_ids, claims); ANSWER(answer_text, cited_chunk_ids).
+The question may require 2–4 hops. SEARCH the split corpus, READ promising returned chunks, then use an entity or fact from what you read to formulate the next SEARCH query. Repeat SEARCH and READ until you have evidence for every hop. A later SEARCH may use a different query.
+Only READ chunk IDs returned by SEARCH. CITE the supporting chunks you actually read; ANSWER with the grounded answer and those cited_chunk_ids. Never answer from common knowledge or with an empty citation list.
+Keep every action field inside params: never put action fields beside params."""
+
 @dataclass
 class RolloutSegment:
     role: str           # "system", "user", "assistant", "observation"
@@ -20,7 +28,9 @@ The JSON object must have `tool`, `intent`, and `params`. Valid params are: SEAR
 Follow SEARCH -> READ -> CITE -> ANSWER. Never call ANSWER with an empty cited_chunk_ids list.
 Only cite chunk IDs returned by READ. Do not answer from common knowledge; use retrieved evidence.
 Keep every action field inside params: never put action fields beside params.
-After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER."""):
+After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER.""", *, multi_hop: bool = False):
+        if multi_hop:
+            system_prompt = MULTIHOP_SYSTEM_PROMPT
         self.segments: List[RolloutSegment] = []
         # Add system prompt as non-trainable
         self.segments.append(RolloutSegment(

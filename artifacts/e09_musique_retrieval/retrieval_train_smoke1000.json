@@ -1,0 +1,28 @@
+{
+  "tasks": 1000,
+  "corpus_chunks": 83866,
+  "hop_counts": {"2": 730, "3": 207, "4": 63},
+  "single_search": {
+    "5": {
+      "support_recall": 0.48749999999999916,
+      "all_support_recall": 0.134,
+      "first_hop_recall": 0.786,
+      "oracle_hop_recall": 0.7676810972996142,
+      "oracle_complete_chain_recall": 0.553
+    },
+    "10": {
+      "support_recall": 0.5509999999999995,
+      "all_support_recall": 0.205,
+      "first_hop_recall": 0.829,
+      "oracle_hop_recall": 0.8242606086583798,
+      "oracle_complete_chain_recall": 0.651
+    },
+    "20": {
+      "support_recall": 0.5925833333333329,
+      "all_support_recall": 0.262,
+      "first_hop_recall": 0.863,
+      "oracle_hop_recall": 0.8705529361337334,
+      "oracle_complete_chain_recall": 0.732
+    }
+  }
+}

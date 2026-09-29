@@ -65,7 +65,9 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
         rubric=Rubric(),
         ground_truth_answer=ground_truth_answer,
         ground_truth_citations=ground_truth_citations,
-        reference_docs=reference_docs
+        reference_docs=reference_docs,
+        retrieval_scope=get_val(sample_metadata, "retrieval_scope", "task_docs"),
+        ground_truth_answer_aliases=get_val(sample_metadata, "ground_truth_answer_aliases", []),
     )
 
     # 3. Setup LLM Client targeting the current Actor model URL
@@ -81,7 +83,7 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict, evaluat
 
     # 4. Initialize rollout and context collectors
     obs = env.reset(task)
-    collector = ConversationCollector()
+    collector = ConversationCollector(multi_hop=task.retrieval_scope == "split_corpus")
     collector.add_user_message(user_query)
 
     # Prompt is the initial system + user query text block

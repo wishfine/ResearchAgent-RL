@@ -1,6 +1,6 @@
 # ResearchAgent-RL 实验记录
 
-最后更新：2026-07-22。此文档是项目的离线实验台账；原始大文件继续保存在服务器 `/data/zhangyonglin/research-agent-rl-data`，仓库只保存配置、指标、日志位置和结论。
+最后更新：2026-07-29。此文档是项目的离线实验台账；原始大文件继续保存在服务器 `/data/zhangyonglin/research-agent-rl-data`，仓库只保存配置、指标、日志位置和结论。
 
 ## 记录规范
 
@@ -249,3 +249,73 @@ scp zhangyonglin@172.22.0.45:/tmp/<run>-logs.tar.gz \
 ```
 
 每次提交给我时，请同时给出：运行目录、代码 commit、命令/关键超参数、`metrics_summary.json`、日志末尾 100 行，以及要比较的基线名称。我会更新本台账并推送到 GitHub。不要传输 100GB 级权重或含凭证的配置文件。
+
+## E08：SFT-874 初始化的 6 GPU 全参 GRPO v2（500 rollout）
+
+| 字段 | 值 |
+| --- | --- |
+| 训练输出 | `/data/zhangyonglin/research-agent-rl-data/outputs/vime_hotpotqa_sft_grpo_v2_6gpu_n8_step500_20260727_115427` |
+| 初始化 / KL reference | SFT `iter_0000874` |
+| 资源 | 6 张 A800 80 GB；actor 4 GPU（TP=2, DP=2），rollout vLLM 2 GPU（TP=2） |
+| 训练规模 | 500 rollout；每 prompt 8 samples；global batch size 8 |
+| 优化 | 全参 Adam，lr `1e-6`，BF16 moments，KL coefficient `0.02` |
+| 奖励系数 | format `+0.20`，invalid action `-0.50`，no answer `-0.20`，step `-0.01` |
+| 权重同步 | vLLM 0.23 兼容的磁盘全量同步；每次约 22 s；仅保留最后 2 个 HF 同步版本 |
+| 最终训练 checkpoint | `checkpoints/iter_0000499` |
+| 最终 rollout HF 权重 | `weight_sync/weight_v000500` |
+| 运行状态 | 已完成；Ray job `raysubmit_kYaU4rZS6hpvPKxV` succeeded |
+| ResearchAgent-RL commit | `e1bdb9e3942bea439f646b256591b4d59551b282` |
+| launcher SHA-256 | `3a008a83a83c2a7c4500f176136c53d96b5215b2e816aa95c38e7442834d5d6a` |
+| reward adapter SHA-256 | `4892ddc9f8ee0412082c0e162a34f41a67f6f1045cae2cf59548dac763114880` |
+| rollout adapter SHA-256 | `61155444c42b36783599f98c7f7b1486f1f1aedf6ad2137edae9fbb3d8e6249a` |
+
+训练与同步链路稳定：`num_rollout=500` 配置完成，训练日志记录的更新编号为 1–499，最终 checkpoint 编号为 499；末尾 vLLM generation 返回 HTTP 200，最后一次权重更新耗时 22.7 s，未观察到 OOM 或 traceback。训练末尾 actor GPU 使用约 74.4–74.8 / 79.2 GB，仍保留约 4.3–4.7 GB 空间。
+
+完整训练日志关键指标已导入本机 `artifacts/e08_grpo_v2/grpo_training_metrics_key.log`（SHA-256 `0ab2e8636393371890ae42a7b9a48499e6578c08053e68fd0178413208dc0271`）；`latest_checkpointed_iteration.txt=499`（SHA-256 `db3defda18fafc0c197740438051c690d98b551a7e449d66390d38fa2db09b77`）。
+
+| 训练端统计 | 值 |
+| --- | ---: |
+| 日志中 rollout / update 数 | 499 / 499（编号 1–499） |
+| step 1 至 499 墙钟时间 | 12.19 h（88.13 s / update） |
+| raw reward mean / std / min / max | 1.5347 / 0.2916 / -0.4963 / 1.6600 |
+| raw reward = 1.66 的 rollout | 342 / 499（68.5%） |
+| `|advantage| <= 1e-6` | 493 / 499（98.8%） |
+| `|pg_loss| <= 1e-6` | 493 / 499（98.8%） |
+| mean / max `train/kl_loss` | 0.00102 / 0.03124 |
+| mean / max grad norm | 0.2274 / 2.7462 |
+| mean / max PPO clip fraction | 0 / 0 |
+| truncated rollout | 2 / 499 |
+| mean generated trajectory length | 2020.2 tokens |
+
+末尾 checkpoint 抽样（raw reward / policy gradient / KL loss / grad norm）：
+
+| step | raw reward | `pg_loss` | `kl_loss` | grad norm |
+| ---: | ---: | ---: | ---: | ---: |
+| 49 | 1.6600 | 0 | 0.000019 | 0.0005 |
+| 149 | 1.4100 | 0 | 0.000066 | 0.0011 |
+| 249 | 1.6600 | 0 | 0.000497 | 0.0031 |
+| 349 | 1.6600 | 0 | 0.000307 | 0.0018 |
+| 449 | 1.6600 | 0 | 0.001114 | 0.0084 |
+| 499 | 1.6600 | 0 | 0.000138 | 0.0012 |
+
+**关键诊断（不能跳过）：** 后期大量 rollout 的原始 reward 固定为 `1.66`，即四步 `SEARCH -> READ -> CITE -> ANSWER` 的当前理论满分：`1.0 answer_quality + 0.5 citation_f1 + 0.20 format - 4*0.01 step penalty`。同一 group 内八个样本的归一化 `rollout/rewards` / `advantages` 几乎都为 0，`train/pg_loss` 也几乎为 0；例如 step 498：`train/loss=0.00016414`，几乎严格等于 `0.02 * train/kl_loss(0.00820705)`。因此后期更新主要是 KL 项，不能据此声称模型获得了 GRPO 性能提升。
+
+这不是权重同步失败或格式坍缩的证据，而是 SFT 后在同一训练题上出现组内奖励饱和 / 低多样性。待办：对保存的 `iter_0000049` 至 `iter_0000499` 全部 checkpoint 用固定 HotpotQA n=100 做独立评测；在效果确认前，不运行 3,000 条完整评测，也不将此运行作为正向 RL 结果报告。
+
+### E08 checkpoint 固定 n=100 筛选（进行中）
+
+| 字段 | 值 |
+| --- | --- |
+| 评测输出 | `/data/zhangyonglin/research-agent-rl-data/outputs/hotpotqa_eval_grpo_v2_all_ckpts_n100_20260728_110855` |
+| 评测集 | HotpotQA eval 固定 100 题，`selection_seed=20260713` |
+| 评测资源 | 单卡 GPU 7，vLLM port 8104 |
+| 候选 | `iter_0000049` 至 `iter_0000499`，每 50 update 一个 checkpoint |
+| 当前状态 | 本次已导入 49、99；终端输出显示 149、199 也已完成，但尚未导入其独立 artifact；249 及以后尚未全部完成/归档，因此不能作最终模型选择 |
+
+| checkpoint | task success | answer quality | citation F1 | parse success | invalid rate | 平均步骤 | 平均延迟 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SFT `iter_0000874`（同一 n=100 对照） | 0.800 | 0.781 | 0.925 | 1.000 | 0.000 | 4.00 | 12.78 s |
+| GRPO v2 `iter_0000049` | 0.840 | 0.823 | **0.935** | 1.000 | 0.000 | 4.00 | 13.27 s |
+| GRPO v2 `iter_0000099` | **0.860** | **0.832** | 0.925 | 1.000 | 0.000 | 4.00 | 13.21 s |
+
+初步观察：两个早期 GRPO checkpoint 都保持了严格四动作格式，并在该固定 100 题集上高于 SFT-874 对照；其中 `iter_0000099` 的 task success 与 answer quality 暂时最高。**这只是小样本筛选结果，且训练端 98.8% 的 advantage 近零，不能作为 GRPO 已产生因果增益的结论。** 仍须收齐全部候选、固定选择规则，并仅对最终优胜者进行 3,000 题确认。

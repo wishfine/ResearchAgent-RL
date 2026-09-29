@@ -54,15 +54,19 @@ def build_records(
             raise ValueError(f"{task_id} has an empty ground_truth_answer")
         if not raw.get("ground_truth_citations"):
             raise ValueError(f"{task_id} has no ground_truth_citations")
-        if not raw.get("reference_docs"):
-            raise ValueError(f"{task_id} has no reference_docs for retrieval scoping")
+        if not raw.get("reference_docs") and raw.get("retrieval_scope") != "split_corpus":
+            raise ValueError(
+                f"{task_id} needs reference_docs or retrieval_scope=split_corpus"
+            )
 
         metadata = {
             "task_id": task_id,
             "user_query": raw["user_query"],
             "ground_truth_answer": raw["ground_truth_answer"],
+            "ground_truth_answer_aliases": raw.get("ground_truth_answer_aliases", []),
             "ground_truth_citations": raw["ground_truth_citations"],
             "reference_docs": raw["reference_docs"],
+            "retrieval_scope": raw.get("retrieval_scope", "task_docs"),
         }
         record = {
             # Qwen3.5 exposes a multimodal processor even for text-only

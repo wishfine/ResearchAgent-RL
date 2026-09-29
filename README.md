@@ -1,5 +1,7 @@
 # ResearchAgent-RL
 
+> 当前 Vime/Agent RL 实验使用 `research_agent/core/`、`research_agent/adapters/vime/` 和 `scripts/run_vime_*.sh`。下方 `src/` 与 `scripts/run_training.py` 是早期原型说明。新的 MuSiQue 多跳检索与 RL 数据准备见 [MuSiQue 升级说明](docs/musique_rl_upgrade_cn.md)。
+
 Document-grounded multi-step tool-use research agent with RL-ready environment and SFT/RL training support.
 
 ## 项目目标
