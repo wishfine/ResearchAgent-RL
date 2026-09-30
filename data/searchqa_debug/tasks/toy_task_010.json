@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_010",
+  "task_type": "survey_synthesis",
+  "user_query": "In which year did World War II end?",
+  "ground_truth_answer": "1945",
+  "ground_truth_citations": [
+    "ww2_end_year"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

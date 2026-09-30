@@ -1,0 +1,22 @@
+# Python bytecode and local OS metadata
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local tooling
+.claude/settings.local.json
+
+# Generated rollouts, checkpoints, and benchmark splits
+outputs/*
+!outputs/eval_results/
+!outputs/eval_results/.gitkeep
+!outputs/trajectories/
+!outputs/trajectories/.gitkeep
+data/searchqa_debug/rollout_dataset.jsonl
+data/hotpotqa_*/
+data/musique_*/
+
+# Remote protocol experiments linked into the local project (publish compact summaries explicitly).
+artifacts/runtime_efficiency/musique_protocol*/
+artifacts/runtime_efficiency/embedding_retrieval_audit*/
+artifacts/runtime_efficiency/musique_retriever_compare*/

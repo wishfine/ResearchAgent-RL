@@ -1,0 +1,26 @@
+{
+  "split_name": "hotpotqa_7k3k",
+  "total_tasks": 10000,
+  "train_tasks_count": 7000,
+  "eval_tasks_count": 3000,
+  "train_fraction": 0.7,
+  "eval_fraction": 0.3,
+  "train_corpus_chunks": 69718,
+  "eval_corpus_chunks": 29838,
+  "train_corpus_document_files": 7000,
+  "eval_corpus_document_files": 3000,
+  "source": {
+    "dataset": "hotpot_qa",
+    "configuration": "distractor",
+    "splits": {
+      "train": "train",
+      "eval": "validation"
+    }
+  },
+  "overlap_verification": {
+    "task_id_overlap_detected": false,
+    "corpus_isolated_by_split": true,
+    "task_retrieval_scoped_by_reference_docs": true,
+    "all_citations_exist": true
+  }
+}

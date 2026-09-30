@@ -1,0 +1,53 @@
+Traceback (most recent call last):
+  File "/data/zhangyonglin/vime-src/vime/tools/convert_torch_dist_to_hf.py", line 10, in <module>
+    import safetensors.torch
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/safetensors/torch.py", line 6, in <module>
+    import torch
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/__init__.py", line 2229, in <module>
+    from torch import _VF as _VF, functional as functional  # usort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/functional.py", line 8, in <module>
+    import torch.nn.functional as F
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/nn/__init__.py", line 8, in <module>
+    from torch.nn.modules import *  # usort: skip # noqa: F403
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/nn/modules/__init__.py", line 1, in <module>
+    from .module import Module  # usort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/nn/modules/module.py", line 17, in <module>
+    from torch.utils._python_dispatch import is_traceable_wrapper_subclass
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/__init__.py", line 8, in <module>
+    from torch.utils import (
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/__init__.py", line 1, in <module>
+    from torch.utils.data.dataloader import (
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 26, in <module>
+    import torch.utils.data.graph_settings
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/graph_settings.py", line 8, in <module>
+    from torch.utils.data.datapipes.iter.sharding import (
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/datapipes/__init__.py", line 1, in <module>
+    from torch.utils.data.datapipes import dataframe as dataframe, iter as iter, map as map
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/datapipes/dataframe/__init__.py", line 1, in <module>
+    from torch.utils.data.datapipes.dataframe.dataframes import (
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/datapipes/dataframe/dataframes.py", line 4, in <module>
+    from torch.utils.data.datapipes._decorator import functional_datapipe
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/datapipes/_decorator.py", line 8, in <module>
+    from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/data/datapipes/datapipe.py", line 17, in <module>
+    dill = import_dill()
+           ^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/torch/utils/_import_utils.py", line 30, in import_dill
+    import dill
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/dill/__init__.py", line 33, in <module>
+    from .session import (
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/site-packages/dill/session.py", line 25, in <module>
+    TEMPDIR = pathlib.PurePath(tempfile.gettempdir())
+                               ^^^^^^^^^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/tempfile.py", line 316, in gettempdir
+    return _os.fsdecode(_gettempdir())
+                        ^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/tempfile.py", line 309, in _gettempdir
+    tempdir = _get_default_tempdir()
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/zhangyonglin/conda_envs/vime-train-cu129/lib/python3.11/tempfile.py", line 224, in _get_default_tempdir
+    raise FileNotFoundError(_errno.ENOENT,
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/home/zhangyonglin/ResearchAgent-RL']

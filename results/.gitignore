@@ -1,0 +1,6 @@
+# Metrics and evaluation logs are versioned selectively; raw trajectories and service state stay local.
+**/trajectories.jsonl
+*.pid
+vllm.log
+eval.log
+.DS_Store

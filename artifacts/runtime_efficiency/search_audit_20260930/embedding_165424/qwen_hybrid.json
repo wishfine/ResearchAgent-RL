@@ -1,0 +1,80 @@
+{
+  "tasks": 1000,
+  "corpus_chunks": 83866,
+  "hop_counts": {
+    "2": 730,
+    "3": 207,
+    "4": 63
+  },
+  "single_search": {
+    "5": {
+      "support_recall": 0.5427499999999994,
+      "all_support_recall": 0.209,
+      "first_hop_recall": 0.801,
+      "oracle_hop_recall": 0.8264037719674239,
+      "oracle_complete_chain_recall": 0.644
+    },
+    "10": {
+      "support_recall": 0.6103333333333331,
+      "all_support_recall": 0.291,
+      "first_hop_recall": 0.849,
+      "oracle_hop_recall": 0.871410201457351,
+      "oracle_complete_chain_recall": 0.725
+    },
+    "20": {
+      "support_recall": 0.6742499999999996,
+      "all_support_recall": 0.379,
+      "first_hop_recall": 0.888,
+      "oracle_hop_recall": 0.9224174882126018,
+      "oracle_complete_chain_recall": 0.824
+    }
+  },
+  "retrieval": {
+    "mode": "hybrid",
+    "index_manifest": {
+      "version": "dense-windows-v2",
+      "corpus_sha256": "dd41ddf18f21f7085ac7a6ca7c3858f634f38c0ce1247d09a07ca2083ac80181",
+      "encoder_model": "Qwen3-Embedding-0.6B",
+      "server": {
+        "id": "Qwen3-Embedding-0.6B",
+        "root": "/local_data/zhangyonglin/models/Qwen3-Embedding-0.6B",
+        "max_model_len": 4096
+      },
+      "encoder_fingerprint": {
+        "root": "/local_data/zhangyonglin/models/Qwen3-Embedding-0.6B",
+        "files": {
+          "1_Pooling/config.json": "37bf193fa101f19101bfad9c31d3eb0f786e247b7b1e5cb7f007d730eed1ddbd",
+          "config.json": "b5bf1f51fc45be473a54718cef92448d90a1be001bf9b9a44b8c7f10a19feaa9",
+          "config_sentence_transformers.json": "10667c72ddb772627bf1780cb7f86af8e2ae0032b8c243c731172064105c6961",
+          "configuration.json": "f888421726665e8a84b738eed42a64875aed79de8be7daade851ac8bf4c0cef9",
+          "generation_config.json": "28396d421a2108acce96383f6a7de78008f7f1b17f807958f3c14c51dbfb65fb",
+          "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "model.safetensors": "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd",
+          "modules.json": "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf",
+          "tokenizer.json": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+          "tokenizer_config.json": "253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0",
+          "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        },
+        "pooling": "LAST",
+        "normalize": true
+      },
+      "query_instruction": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
+      "rows_sha256": "6d2d1370ef4108153218930a8c724695cefbe8a7dd2bd529e43e65067203b695",
+      "input_policy": "local_hf_token_ids_v1",
+      "window_policy": {
+        "mode": "token_windows",
+        "max_length": 2048,
+        "overlap": 64,
+        "paragraph_score": "max_window_cosine",
+        "window_api": "encoding_truncate_postprocess_v1"
+      },
+      "rows": 83866,
+      "paragraphs": 83866,
+      "complete": true,
+      "dimension": 1024,
+      "dtype": "float32",
+      "vectors_sha256": "6351515c218aff12fdf8188a283489fdc5280dfd0babfc9a4dce29cf46f2cf56",
+      "rows_file_sha256": "89524c0bf8570bc78a24d833940ec8e7851d3bea1120df14530086be0657c0d6"
+    }
+  }
+}

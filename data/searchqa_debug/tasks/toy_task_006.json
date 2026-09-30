@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_006",
+  "task_type": "survey_synthesis",
+  "user_query": "What is the chemical symbol for water?",
+  "ground_truth_answer": "H2O",
+  "ground_truth_citations": [
+    "water_chemical_symbol"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

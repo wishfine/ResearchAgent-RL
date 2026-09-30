@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_003",
+  "task_type": "survey_synthesis",
+  "user_query": "What is the capital city of France?",
+  "ground_truth_answer": "Paris",
+  "ground_truth_citations": [
+    "france_capital"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

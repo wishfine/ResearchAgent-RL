@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_009",
+  "task_type": "survey_synthesis",
+  "user_query": "Who painted the Mona Lisa?",
+  "ground_truth_answer": "Leonardo da Vinci",
+  "ground_truth_citations": [
+    "mona_lisa_painter"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}

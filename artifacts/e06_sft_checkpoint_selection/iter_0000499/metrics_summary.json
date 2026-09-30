@@ -1,0 +1,17 @@
+{
+  "episodes": 100,
+  "action_parse_success_rate": 1.0,
+  "invalid_action_rate": 0.0,
+  "answer_quality": 0.7644465329991645,
+  "answer_contains": 0.68,
+  "answer_token_f1": 0.7173512949039264,
+  "citation_precision": 0.9,
+  "citation_recall": 0.9,
+  "citation_f1": 0.9,
+  "average_steps": 4.0,
+  "repeated_query_rate": 0.0,
+  "task_success": 0.77,
+  "average_prompt_tokens": 6094.62,
+  "average_completion_tokens": 331.79,
+  "average_episode_latency_sec": 12.803920244015753
+}

@@ -1,0 +1,12 @@
+{
+  "task_id": "toy_task_005",
+  "task_type": "survey_synthesis",
+  "user_query": "Who developed the theory of general relativity?",
+  "ground_truth_answer": "Albert Einstein",
+  "ground_truth_citations": [
+    "general_relativity_creator"
+  ],
+  "reference_docs": [
+    "toy_wiki_corpus"
+  ]
+}
