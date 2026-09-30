@@ -89,6 +89,10 @@ ACTOR_GPUS="${ACTOR_GPUS:-4}"
 ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
 RAY_PORT="${RAY_PORT:-6379}"
 RAY_DASHBOARD_PORT="${RAY_DASHBOARD_PORT:-8265}"
+RAY_AUTO_STOP="${RAY_AUTO_STOP:-1}"
+ATTENTION_BACKEND="${ATTENTION_BACKEND:-flash}"
+ROLLOUT_MAX_RESPONSE_LEN="${ROLLOUT_MAX_RESPONSE_LEN:-256}"
+ROLLOUT_TEMPERATURE="${ROLLOUT_TEMPERATURE:-1.0}"
 
 fail() {
   echo "[ERROR] $*" >&2
@@ -127,6 +131,9 @@ fi
 [[ "$GLOBAL_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "GLOBAL_BATCH_SIZE must be a positive integer"
 (( GLOBAL_BATCH_SIZE >= N_SAMPLES_PER_PROMPT )) || fail "GLOBAL_BATCH_SIZE must cover N_SAMPLES_PER_PROMPT"
 [[ "$SAVE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || fail "SAVE_INTERVAL must be a positive integer"
+[[ "$RAY_AUTO_STOP" =~ ^[01]$ ]] || fail "RAY_AUTO_STOP must be 0 or 1"
+[[ "$ATTENTION_BACKEND" =~ ^(auto|flash|fused|unfused|local)$ ]] || fail "Unknown attention backend"
+[[ "$ROLLOUT_MAX_RESPONSE_LEN" =~ ^[1-9][0-9]*$ ]] || fail "ROLLOUT_MAX_RESPONSE_LEN must be positive"
 [[ "$VLLM_SERVER_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || fail "VLLM_SERVER_CONCURRENCY must be a positive integer"
 [[ "$OPTIMIZER_STATE_DTYPE" =~ ^(fp32|fp16|bf16)$ ]] || \
   fail "OPTIMIZER_STATE_DTYPE must be fp32, fp16, or bf16"
@@ -189,6 +196,8 @@ export PYTHONPATH="$PROJECT_ROOT:$MEGATRON_ROOT:$VIME_ROOT${PYTHONPATH:+:$PYTHON
 export RAY_TMPDIR="${RAY_TMPDIR:-/data/$USER/ray}"
 export RESEARCH_AGENT_CORPUS_DIR="$CORPUS_DIR"
 export RESEARCH_AGENT_MAX_STEPS="${RESEARCH_AGENT_MAX_STEPS:-6}"
+export RESEARCH_AGENT_READ_MODE="${RESEARCH_AGENT_READ_MODE:-head300}"
+export RESEARCH_AGENT_PROMPT_MODE="${RESEARCH_AGENT_PROMPT_MODE:-legacy}"
 # These defaults preserve the historic reward exactly.  The bounded GRPO
 # launcher overrides them after an SFT cold start so malformed action turns
 # cannot tie with grounded trajectories.
@@ -242,15 +251,17 @@ print("fully async rollout and ResearchAgent hooks: OK")
 PY
 
 if "$TRAIN_ENV/bin/ray" status --address="127.0.0.1:$RAY_PORT" >/dev/null 2>&1; then
-  fail "A Ray cluster is already listening on port $RAY_PORT. Stop only the intended cluster first: $TRAIN_ENV/bin/ray stop --force"
+  fail "A Ray cluster is already listening on port $RAY_PORT. Identify its owner/run before cleanup, or choose unused RAY_PORT and RAY_DASHBOARD_PORT. Do not globally stop unrelated clusters."
 fi
 
 ray_started=0
 cleanup_ray() {
   local status=$?
-  if [[ "$ray_started" -eq 1 ]]; then
+  if [[ "$ray_started" -eq 1 && "$RAY_AUTO_STOP" == "1" ]]; then
     echo "Stopping Ray cluster started by this launcher..." >&2
     RAY_TMPDIR="$RAY_TMPDIR" "$TRAIN_ENV/bin/ray" stop --force >/dev/null 2>&1 || true
+  elif [[ "$ray_started" -eq 1 ]]; then
+    echo "Ray left running (RAY_AUTO_STOP=0); do not stop unrelated clusters." >&2
   fi
   return "$status"
 }
@@ -300,6 +311,8 @@ print(json.dumps({"env_vars": {
     "NCCL_NVLS_ENABLE": "0",
     "RESEARCH_AGENT_CORPUS_DIR": os.environ["RESEARCH_AGENT_CORPUS_DIR"],
     "RESEARCH_AGENT_MAX_STEPS": os.environ["RESEARCH_AGENT_MAX_STEPS"],
+    "RESEARCH_AGENT_READ_MODE": os.environ["RESEARCH_AGENT_READ_MODE"],
+    "RESEARCH_AGENT_PROMPT_MODE": os.environ["RESEARCH_AGENT_PROMPT_MODE"],
     "RESEARCH_AGENT_FORMAT_REWARD": os.environ["RESEARCH_AGENT_FORMAT_REWARD"],
     "RESEARCH_AGENT_INVALID_ACTION_PENALTY": os.environ["RESEARCH_AGENT_INVALID_ACTION_PENALTY"],
     "RESEARCH_AGENT_NO_ANSWER_PENALTY": os.environ["RESEARCH_AGENT_NO_ANSWER_PENALTY"],
@@ -345,8 +358,8 @@ ROLLOUT_ARGS=(
   --num-rollout "$NUM_ROLLOUT"
   --rollout-batch-size "$ROLLOUT_BATCH_SIZE"
   --n-samples-per-prompt "$N_SAMPLES_PER_PROMPT"
-  --rollout-max-response-len 256
-  --rollout-temperature 1.0
+  --rollout-max-response-len "$ROLLOUT_MAX_RESPONSE_LEN"
+  --rollout-temperature "$ROLLOUT_TEMPERATURE"
   --micro-batch-size "$MICRO_BATCH_SIZE"
   --global-batch-size "$GLOBAL_BATCH_SIZE"
   --balance-data
@@ -444,7 +457,7 @@ MISC_ARGS=(
   --attention-dropout 0.0
   --hidden-dropout 0.0
   --attention-softmax-in-fp32
-  --attention-backend flash
+  --attention-backend "$ATTENTION_BACKEND"
   --no-gradient-accumulation-fusion
 )
 if [[ "$ACCUMULATE_ALLREDUCE_GRADS_IN_FP32" == "1" ]]; then

@@ -21,7 +21,9 @@ from typing import Any
 from research_agent.adapters.slime.custom_reward import custom_rm
 from research_agent.core.corpus.store import CorpusStore
 from research_agent.core.env.env import ResearchEnv
-from research_agent.core.env.rollout_collector import ConversationCollector
+from research_agent.core.env.rollout_collector import (
+    ConversationCollector, CITE_FIRST_SYSTEM_PROMPT, ADAPTIVE_SYSTEM_PROMPT,
+)
 from research_agent.core.schema.parser import ActionParser
 from research_agent.core.schema.task import Rubric, TaskSample, TaskType
 from research_agent.core.tools.answer import AnswerTool
@@ -61,11 +63,19 @@ def _make_env(args: Any) -> ResearchEnv:
     max_steps = int(os.environ.get("RESEARCH_AGENT_MAX_STEPS", "6"))
     env = ResearchEnv(corpus=_get_corpus(args), max_steps=max_steps)
     env.register_tool(SearchTool())
-    env.register_tool(ReadTool())
+    env.register_tool(ReadTool(mode=os.environ.get("RESEARCH_AGENT_READ_MODE", "head300")))
     env.register_tool(RerankTool())
     env.register_tool(CiteTool())
     env.register_tool(AnswerTool())
     return env
+
+
+def _make_collector(task: TaskSample) -> ConversationCollector:
+    mode = os.environ.get("RESEARCH_AGENT_PROMPT_MODE", "legacy")
+    prompts = {"legacy": None, "cite_first": CITE_FIRST_SYSTEM_PROMPT, "adaptive": ADAPTIVE_SYSTEM_PROMPT}
+    if mode not in prompts:
+        raise ValueError("RESEARCH_AGENT_PROMPT_MODE must be legacy, cite_first or adaptive")
+    return ConversationCollector(prompts[mode], multi_hop=task.retrieval_scope == "split_corpus")
 
 
 def _encode(tokenizer: Any, text: str) -> list[int]:
@@ -130,7 +140,7 @@ async def custom_generate(args: Any, sample: Any, sampling_params: dict[str, Any
     task, metadata = _task_from_sample(sample)
     env = _make_env(args)
     env.reset(task)
-    collector = ConversationCollector(multi_hop=task.retrieval_scope == "split_corpus")
+    collector = _make_collector(task)
     collector.add_user_message(task.user_query)
 
     state = GenerateState(args)
