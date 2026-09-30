@@ -96,3 +96,46 @@ smoke2通过且本run的Ray/卡占用已清理后，以相同配置另起新RUN_
 本轮优先取得真实训练数据；embedding对照、全文协议的192episode和新算法消融都移出今天的启动关键路径，但不能在最终论文里省掉对照。先记录前5–10个group的真实耗时再估200group总时间，不能拿推理吞吐或HotpotQA旧耗时直接保证MuSiQue时长。
 
 本机验证：全量109 passed、2 skipped；入口新增3项行为测试独立审查复核通过，三脚本shell语法通过。已有HF路径保持复用；启动前prompt内容逐条与当前train tasks核对，不覆盖不匹配旧文件。Vime的loss-mask/log-prob拼接算法未修改，GPU训练及optimizer/权重同步仍待35真2更新验收。
+
+## 同步后的实际阻塞与定向修复
+
+用户实际日志确认：源码已同步43.35MB；SFT训练checkpoint含8个distcp分片、common.pt、.metadata与metadata.json，约144.77GB已同步（非HF模型大小）。路径都通过，torch/vLLM/Ray/FLA/TMS和项目rollout均导入。
+
+失败的TE/mbridge/megatron.core都指向同一`transformer_engine_torch*.so`需要GLIBC_2.32；35宿主不满足，不能使用45编译的这个binding。系统libc不升级，保留TE2.10 Python与cu12核心，仅在35用原2.10源码重建torch binding。[TE2.10官方FORCE_BUILD入口](https://github.com/NVIDIA/TransformerEngine/blob/v2.10/transformer_engine/pytorch/setup.py)支持`NVTE_PYTORCH_FORCE_BUILD=TRUE`，避免再次下载预编译wheel。
+
+CUDA并未缺失：用户之前实测nvcc12.9/FlashInfer成功时的CUDA_HOME是`/local_data/zhangyonglin/cuda-toolkit-12.9`。本轮probe/入口错误套用了45嵌套目录，已修正两处默认值并加回归测试。显式CUDA_HOME仍可覆盖。
+
+在35只传编译源包，不再传模型/checkpoint：
+
+```bash
+(
+set -euo pipefail
+cd /local_data/$USER/ResearchAgent-RL
+git pull --ff-only origin slime-rewrite
+mkdir -p /local_data/$USER/vime-src/wheels
+rsync -avh --partial --progress \
+  zhangyonglin@172.22.0.45:/data/zhangyonglin/vime-src/wheels/transformer_engine_torch-2.10.0.tar.gz \
+  /local_data/$USER/vime-src/wheels/
+
+BASE="/local_data/$USER/research-agent-rl-data"
+RUN_DIR="$BASE/runtime_efficiency/te_torch_native35_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$RUN_DIR"
+RUN_DIR="$RUN_DIR" nohup bash scripts/repair_te_torch_35.sh \
+  >"$RUN_DIR/build.log" 2>&1 < /dev/null &
+echo $! > "$RUN_DIR/pid.txt"
+printf '%s\n' "$RUN_DIR" > "$BASE/runtime_efficiency/latest_te_native35.txt"
+echo "BUILD_DIR=$RUN_DIR"
+)
+```
+
+查看：
+
+```bash
+BASE="/local_data/$USER/research-agent-rl-data"
+BUILD_DIR="$(cat "$BASE/runtime_efficiency/latest_te_native35.txt")"
+tail -n 60 "$BUILD_DIR/build.log"
+```
+
+脚本离线构建，固定原source SHA、三包2.10版本、Torch CUDA12.9、系统g++，只更新torch binding，不更新torch/vLLM。先构建wheel、readelf验证所需GLIBC不高于宿主，再备份旧.so、安装并测试导入。失败保留build.log，旧binding在构建失败时不动；安装后若导入失败不自动删除/降级其他包。已移除的外部FlashAttention不在本次修复范围。
+
+编译不使用GPU；之后2步GRPO才验证TE/GDN/backward/optimizer。用户最新盘点GPU0=56140MiB、GPU1=632MiB、GPU2=8298MiB、GPU3–7=13MiB：GPU2在忙，启动六卡前先确认PID/用途，不依据显存猜测并自动杀进程。

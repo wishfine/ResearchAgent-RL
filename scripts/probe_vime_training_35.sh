@@ -6,7 +6,7 @@ BASE="${BASE:-/local_data/$USER/research-agent-rl-data}"
 ENV="${TRAIN_ENV:-/local_data/$USER/conda_envs/research-agent-runtime}"
 VIME_ROOT="${VIME_ROOT:-/local_data/$USER/vime-src/vime}"
 MEGATRON_ROOT="${MEGATRON_ROOT:-/local_data/$USER/vime-src/Megatron-LM}"
-CUDA_HOME="${CUDA_HOME:-/local_data/$USER/cuda-toolkit-12.9/usr/local/cuda-12.9}"
+CUDA_HOME="${CUDA_HOME:-/local_data/$USER/cuda-toolkit-12.9}"
 HF_CHECKPOINT="${HF_CHECKPOINT:-/local_data/$USER/models/ResearchAgent-Qwen3.5-9B-SFT874}"
 export VIME_ROOT MEGATRON_ROOT CUDA_HOME HF_CHECKPOINT
 export PATH="$ENV/bin:$CUDA_HOME/bin:$PATH"
