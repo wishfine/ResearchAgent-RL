@@ -1,0 +1,81 @@
+{
+  "tasks": 1000,
+  "corpus_chunks": 83866,
+  "hop_counts": {
+    "2": 730,
+    "3": 207,
+    "4": 63
+  },
+  "single_search": {
+    "5": {
+      "support_recall": 0.02308333333333333,
+      "all_support_recall": 0.0,
+      "first_hop_recall": 0.015,
+      "oracle_hop_recall": 0.05143591941705958,
+      "oracle_complete_chain_recall": 0.003
+    },
+    "10": {
+      "support_recall": 0.03524999999999999,
+      "all_support_recall": 0.0,
+      "first_hop_recall": 0.018,
+      "oracle_hop_recall": 0.06729532790398629,
+      "oracle_complete_chain_recall": 0.004
+    },
+    "20": {
+      "support_recall": 0.05133333333333335,
+      "all_support_recall": 0.0,
+      "first_hop_recall": 0.029,
+      "oracle_hop_recall": 0.09172738962708958,
+      "oracle_complete_chain_recall": 0.004
+    }
+  },
+  "retrieval": {
+    "mode": "dense",
+    "index_manifest": {
+      "version": "dense-windows-v2",
+      "corpus_sha256": "dd41ddf18f21f7085ac7a6ca7c3858f634f38c0ce1247d09a07ca2083ac80181",
+      "encoder_model": "bge-small-zh-v1.5",
+      "server": {
+        "id": "bge-small-zh-v1.5",
+        "root": "/local_data/zhangyonglin/data/bio-know-tag/models/bge-small-zh-v1.5",
+        "max_model_len": 512
+      },
+      "encoder_fingerprint": {
+        "root": "/local_data/zhangyonglin/data/bio-know-tag/models/bge-small-zh-v1.5",
+        "files": {
+          "1_Pooling/config.json": "aaa8861589f80c961a03cc86c7eeaef7605c1676b9ab55329d33a304738769c6",
+          "config.json": "3853a7979202c348751b753e36f579c41d8da7d36af617d3d907e1fc9b441f2a",
+          "config_sentence_transformers.json": "940d5f50db195fa6e5e6a4f122c095f77880de259d74b14a65779ed48bdd7c56",
+          "configuration.json": "6bc26d64eb5024b4d1dab5a52371958b429256d6c9d59787f1f5294a54e0cebd",
+          "model.safetensors": "354763b9b1357bc9c44f62c6be2276321081ed2567773608c0d0785b61d5a026",
+          "modules.json": "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf",
+          "pytorch_model.bin": "7c5fe667bbed05dc10e246e229b701ad266fe4d95ab946e9e5aa402056611b88",
+          "sentence_bert_config.json": "84e39fda68ccbff05bfa723ae9c0e70e23e2ec373b76e0f8c6e71af72a693cbf",
+          "special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+          "tokenizer.json": "48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26",
+          "tokenizer_config.json": "e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a",
+          "vocab.txt": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c"
+        },
+        "pooling": "CLS",
+        "normalize": true
+      },
+      "query_instruction": "",
+      "rows_sha256": "bb5869873758014a8f7eece0f9e11fd28fe04acc478fad71b105d46aac936a7d",
+      "input_policy": "local_hf_token_ids_v1",
+      "window_policy": {
+        "mode": "token_windows",
+        "max_length": 512,
+        "overlap": 64,
+        "paragraph_score": "max_window_cosine",
+        "window_api": "encoding_truncate_postprocess_v1"
+      },
+      "rows": 83996,
+      "paragraphs": 83866,
+      "complete": true,
+      "dimension": 512,
+      "dtype": "float32",
+      "vectors_sha256": "1d3bd0af0f9f07cc96251590336185881e6416482ca4aef0f5df86c9568528f8",
+      "rows_file_sha256": "71dacc76a202f51fc32ea51526ba60e2fff2e6d59e6c66251425a81a7e85fd8a"
+    }
+  }
+}

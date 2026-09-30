@@ -1,6 +1,6 @@
 # ResearchAgent-RL 实验记录
 
-最后更新：2026-07-29。此文档是项目的离线实验台账；原始大文件继续保存在服务器 `/data/zhangyonglin/research-agent-rl-data`，仓库只保存配置、指标、日志位置和结论。
+最后更新：2026-09-30。此文档是项目的离线实验台账；HotpotQA原始大文件保存在45的 `/data/zhangyonglin/research-agent-rl-data`，MuSiQue实验保存在35的 `/local_data/zhangyonglin/research-agent-rl-data`，仓库只保存配置、指标、日志位置和结论。
 
 ## 记录规范
 
@@ -319,3 +319,41 @@ scp zhangyonglin@172.22.0.45:/tmp/<run>-logs.tar.gz \
 | GRPO v2 `iter_0000099` | **0.860** | **0.832** | 0.925 | 1.000 | 0.000 | 4.00 | 13.21 s |
 
 初步观察：两个早期 GRPO checkpoint 都保持了严格四动作格式，并在该固定 100 题集上高于 SFT-874 对照；其中 `iter_0000099` 的 task success 与 answer quality 暂时最高。**这只是小样本筛选结果，且训练端 98.8% 的 advantage 近零，不能作为 GRPO 已产生因果增益的结论。** 仍须收齐全部候选、固定选择规则，并仅对最终优胜者进行 3,000 题确认。
+
+## E09：MuSiQue train 全库五组检索对照
+
+日期：2026-09-30。**离线检索器发现实验，不是Agent任务成功率，不是RL提升。**
+
+| 字段 | 值 |
+|---|---|
+| 服务器 / run | 35 / `embedding_retrieval_audit_20260930_165424` |
+| code commit | `044a57639b9ddc9e028209149eead225d6ecef04` |
+| 数据 | train 固定1000题，seed42；2/3/4-hop分别730/207/63题；83,866段全split语料 |
+| 配置 | BM25；BGE/Qwen dense；各自与BM25做等权RRF hybrid，k=60 |
+| 完成证据 | driver完成标志 + 五组JSON + 四组各3333请求全部success，无error/未结束请求 |
+| 本机完整原件 | `artifacts/runtime_efficiency/embedding_retrieval_audit_20260930_165424/`，不纳入Git |
+| 可版本化汇总 | `artifacts/runtime_efficiency/search_audit_20260930/embedding_165424/` |
+| 详细报告 | `docs/embedding_retrieval_results_20260930.md`，含Top-5/10/20、成本和文件SHA |
+
+| 配置 | 支持段落召回@10 | 全支持段落命中@10 | 首跳命中@10 | Oracle完整链@10 |
+|---|---:|---:|---:|---:|
+| BM25 | 55.10% | 20.50% | 82.90% | 65.10% |
+| BGE dense | 3.52% | 0.00% | 1.80% | 0.40% |
+| BGE hybrid | 44.37% | 12.10% | 69.50% | 47.90% |
+| Qwen dense | 57.76% | 26.60% | 79.10% | **73.20%** |
+| Qwen hybrid | **61.03%** | **29.10%** | **84.90%** | 72.50% |
+
+Qwen hybrid在原问题Top-5/10/20的三项召回指标均领先；Top-10全证据命中相对BM25提高8.60个百分点（205→291题）。但gold hop的@5/@10完整链命中是Qwen dense略优，不能宣称hybrid全面支配。BGE中文模型配置在英文MuSiQue上表现很差，融合还降低BM25召回；语言不匹配是合理假设，不是已隔离的唯一原因。
+
+Qwen hybrid query编码客户端P50/P95为42.79/45.59ms，每组含gold诊断共3333次请求和107,441个embedding prompt tokens；它不是完整SEARCH工具耗时，也不含建库或Agent生成成本。原件无逐题命中向量、服务GPU分配日志或Agent轨迹，因此不做显著性/高并发/实际任务增益结论。
+
+下一步：冻结SFT874，用相同24道train任务和prompt/READ条件对照BM25与Qwen hybrid，再决定是否锁定检索器供RL使用。Oracle查询不进入策略，train发现结果不能作held-out结果；不修改旧HotpotQA台账的效果指标。
+
+## E10（待运行）：冻结SFT874的检索器 × prompt/READ对照
+
+- 目的：验证E09的Qwen hybrid离线召回收益是否转化为实际Agent质量/成本变化，不训练模型、不报告RL增益。
+- 设计：train固定24题（每hop8题）、seed20260929、2 repeats；四种prompt/READ条件分别对照BM25与Qwen hybrid，总计384 episode。
+- 两组固定同一模型文件/任务/语料/代码/采样哈希和请求种子，变化仅为检索配置；在任何policy调用前核对manifest。
+- 入口：`scripts/run_musique_retriever_compare.sh`；用已有35的8105策略服务和8107 embedding服务，不启停GPU进程。
+- 汇总：`comparison.json` / `comparison.md`，同task/repeat/arm配对、按task平均repeat差值；记录严格EM/F1、grounded EM、引用/证据召回、动作/步数、token与墙钟，失败/未知请求仍记成本。
+- 状态：本机代码和回归验证完成，**尚未在35启动或取得结果**。运行及下载命令见`docs/musique_retriever_comparison_runbook_20260930.md`。

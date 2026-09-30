@@ -1,0 +1,5 @@
+Audit: bge dense
+Audit: bge hybrid
+Audit: qwen dense
+Audit: qwen hybrid
+RETRIEVAL_AUDIT_COMPLETED RUN_DIR=/local_data/zhangyonglin/research-agent-rl-data/runtime_efficiency/embedding_retrieval_audit_20260930_165424

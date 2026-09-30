@@ -69,4 +69,4 @@ python scripts/evaluate_retrieval.py \
 
 ## 用户追加后实现的可选embedding通道
 
-用户随后要求同时支持现有BGE和Qwen embedding。本轮已新增两个模型的独立索引、dense和RRF hybrid模式及Agent客户端接入；默认BM25不变。上表的“没有hybrid/dense”是审查原始代码时的事实，当前可选代码通道已存在，**真实模型质量/延迟仍未测**。没有加入cross-encoder reranker，也没有修复候选provenance或length-only进展判定；不能将这些待做项也称为已完成。运行方式见`embedding_retrieval_runbook_20260930.md`。
+用户随后要求同时支持现有BGE和Qwen embedding。本轮已新增两个模型的独立索引、dense和RRF hybrid模式及Agent客户端接入；默认BM25不变。上表的“没有hybrid/dense”是审查原始代码时的事实，当前可选代码通道已存在。35的1000题真实检索对照现已完成：Qwen hybrid全证据@10为29.1%（BM25为20.5%），BGE hybrid为12.1%，因此优先验证Qwen hybrid，保留BM25对照。完整结果和客户端编码成本见`embedding_retrieval_results_20260930.md`；仍未测新检索器的Agent效果及完整工具p95。没有加入cross-encoder reranker，也没有修复候选provenance或length-only进展判定；不能将这些待做项也称为已完成。运行方式见`embedding_retrieval_runbook_20260930.md`。

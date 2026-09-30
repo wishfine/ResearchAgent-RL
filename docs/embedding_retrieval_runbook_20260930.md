@@ -1,6 +1,6 @@
 # BGE / Qwen embedding：全库检索对照与35运行命令
 
-日期：2026-09-30。实现完成，本机toy/HTTP/状态回归测试通过；用户35上两种embedding服务与canonical编码已验证通过，**全量建索引及检索质量结果仍待验证**。没有替用户启动远端服务，没有下载模型到本机，没有修改其他项目环境。
+日期：2026-09-30。实现完成，本机toy/HTTP/状态回归测试通过；用户35上两种embedding服务、canonical编码、全量train索引及1000题五组检索对照均已完成。真实结果见`embedding_retrieval_results_20260930.md`：Qwen hybrid为当前主检索候选，Agent效果与高并发成本仍待验证。没有替用户启动远端服务，没有下载模型到本机，没有修改其他项目环境。下面保留运行命令和各阶段历史记录，其中“待验证”描述对应当时状态。
 
 ## 做了什么
 
@@ -166,6 +166,8 @@ echo "RUN_DIR=$RUN_DIR"
 可以首次把`AUDIT_TASKS=100`用于基础设施检查，但要另建结果目录，不能混入1000题表。如果只启了Qwen，设`EMBED_AUDIT_MODELS=qwen`，得到BM25+Qwen两组检索模式。
 
 ## 5. 接入Agent：同题同参数，另建run目录
+
+1000题对照后，当前推荐用新增的`run_musique_retriever_compare.sh`统一运行BM25与Qwen hybrid、在付费policy调用前核对两组manifest，并自动生成跨检索器配对比较。完整矩阵、启动/恢复/下载方式见`musique_retriever_comparison_runbook_20260930.md`；下方仍保留单检索器入口供独立消融。
 
 原四组prompt/READ实验默认BM25。embedding版本必须另建目录，不中途换旧run的检索器。以下用Qwen hybrid运行同一24题2次重复；保留对应BM25四组作为对照：
 

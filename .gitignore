@@ -19,3 +19,4 @@ data/musique_*/
 # Remote protocol experiments linked into the local project (publish compact summaries explicitly).
 artifacts/runtime_efficiency/musique_protocol*/
 artifacts/runtime_efficiency/embedding_retrieval_audit*/
+artifacts/runtime_efficiency/musique_retriever_compare*/
