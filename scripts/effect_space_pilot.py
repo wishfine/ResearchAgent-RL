@@ -41,6 +41,7 @@ def sample_first_search(
     tasks_dir: Path, model_url: str, model_name: str, *, max_tasks: int,
     samples_per_task: int, selection_seed: int, temperature: float, top_p: float,
     max_tokens: int, sample_path: Path, resume: bool = False,
+    model_revision: str | None = None,
 ) -> list[dict]:
     if max_tasks <= 0 or samples_per_task <= 0:
         raise ValueError("max_tasks and samples_per_task must be positive")
@@ -58,6 +59,8 @@ def sample_first_search(
     config = {
         "tasks_dir": str(tasks_dir.resolve()), "model_url": model_url,
         "model_name": model_name, "max_tasks": max_tasks,
+        "model_revision": model_revision,
+        "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "samples_per_task": samples_per_task, "selection_seed": selection_seed,
         "temperature": temperature, "top_p": top_p, "max_tokens": max_tokens,
         "selected_tasks_sha256": selected_task_hash.hexdigest(),
@@ -168,6 +171,7 @@ def analyze_samples(rows: list[dict], tasks_dir: Path, corpus_dir: Path,
                     record.update({
                         "valid_search": True, "topk": topk,
                         "effect_chunk_ids": list(effect),
+                        "candidate_scores": [float(item.score) for item in candidates],
                         "gold_recall": len(gold & set(effect)) / len(gold) if gold else None,
                         "first_hop_hit": first_hop in effect if first_hop else None,
                     })
@@ -181,6 +185,24 @@ def analyze_samples(rows: list[dict], tasks_dir: Path, corpus_dir: Path,
             effects = list(groups)
             if len(groups) > len(surfaces):
                 raise ValueError(f"Non-deterministic retrieval for repeated SEARCH actions in {task_id}")
+            # The SEARCH observation hides retrieval scores, but EnvState keeps
+            # them and RERANK can use them. Same ordered IDs are therefore not
+            # automatically the same post-tool state.
+            score_spreads = []
+            for indices in groups.values():
+                distinct = {(" ".join(proposals[index].query.casefold().split()),
+                             valid_results[index]["topk"]): index for index in indices}
+                representatives = list(distinct.values())
+                if len(representatives) < 2:
+                    continue
+                vectors = [valid_results[index]["candidate_scores"]
+                           for index in representatives]
+                score_spreads.append(max(
+                    abs(left_score - right_score)
+                    for left_index, left in enumerate(vectors)
+                    for right in vectors[left_index + 1:]
+                    for left_score, right_score in zip(left, right)
+                ) if vectors[0] else 0.0)
             pairs = [(effects[i], effects[j]) for i in range(len(effects))
                      for j in range(i + 1, len(effects))]
             per_task.append({
@@ -191,6 +213,11 @@ def analyze_samples(rows: list[dict], tasks_dir: Path, corpus_dir: Path,
                 "duplicate_surface_samples": len(proposals) - len(surfaces),
                 "duplicate_effect_samples": len(proposals) - len(groups),
                 "distinct_query_effect_collisions": len(surfaces) - len(groups),
+                "distinct_query_same_ids_classes": len(score_spreads),
+                "same_ids_classes_with_score_shift": sum(
+                    spread > 1e-9 for spread in score_spreads
+                ),
+                "max_same_ids_score_shift": max(score_spreads, default=0.0),
                 "near_effect_pairs": sum(jaccard(a, b) >= jaccard_threshold for a, b in pairs),
                 "distinct_effect_pairs": len(pairs),
                 "mean_gold_recall": (
@@ -205,7 +232,8 @@ def analyze_samples(rows: list[dict], tasks_dir: Path, corpus_dir: Path,
     totals = {key: sum(item[key] for item in per_task) for key in (
         "samples", "valid_searches", "unique_queries", "unique_ordered_effects",
         "duplicate_surface_samples", "duplicate_effect_samples",
-        "distinct_query_effect_collisions", "near_effect_pairs", "distinct_effect_pairs",
+        "distinct_query_effect_collisions", "distinct_query_same_ids_classes",
+        "same_ids_classes_with_score_shift", "near_effect_pairs", "distinct_effect_pairs",
     )}
     valid = totals["valid_searches"]
     by_hop: dict[str, dict] = {}
@@ -234,6 +262,14 @@ def analyze_samples(rows: list[dict], tasks_dir: Path, corpus_dir: Path,
             totals["distinct_query_effect_collisions"] / totals["unique_queries"]
             if totals["unique_queries"] else None
         ),
+        "same_ids_score_shift_class_rate": (
+            totals["same_ids_classes_with_score_shift"]
+            / totals["distinct_query_same_ids_classes"]
+            if totals["distinct_query_same_ids_classes"] else None
+        ),
+        "max_same_ids_score_shift": max(
+            (item["max_same_ids_score_shift"] for item in per_task), default=0.0
+        ),
         "hypothetical_continuations_one_per_exact_effect": totals["unique_ordered_effects"],
         "by_hop_count": by_hop,
         "per_task": per_task,
@@ -258,6 +294,8 @@ def main() -> None:
                         help="Continue an interrupted model sampling run with the same parameters")
     parser.add_argument("--model_url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--model_name", default="Qwen3.5-9B")
+    parser.add_argument("--model_revision",
+                        help="Checkpoint path/revision actually loaded by the model service")
     parser.add_argument("--max_tasks", type=int, default=200)
     parser.add_argument("--samples_per_task", type=int, default=8)
     parser.add_argument("--selection_seed", type=int, default=42)
@@ -284,6 +322,7 @@ def main() -> None:
             selection_seed=args.selection_seed, temperature=args.temperature,
             top_p=args.top_p, max_tokens=args.max_tokens,
             sample_path=args.output_dir / "samples.jsonl", resume=args.resume,
+            model_revision=args.model_revision,
         )
     if args.samples_file:
         _write_jsonl(args.output_dir / "samples.jsonl", rows)
@@ -293,6 +332,7 @@ def main() -> None:
     summary["sampling"] = {
         "source": str(args.samples_file) if args.samples_file else "model_api",
         "model_name": args.model_name if not args.samples_file else None,
+        "model_revision": args.model_revision if not args.samples_file else None,
         "temperature": args.temperature if not args.samples_file else None,
         "top_p": args.top_p if not args.samples_file else None,
         "selection_seed": args.selection_seed if not args.samples_file else None,

@@ -1,6 +1,26 @@
 # Effect-Space Policy Optimization：算法假设与预注册实验计划
 
-状态：**阶段 0 可行性诊断已实现；尚未接入 Vime 在线训练，也没有模型采样结果。** 不应把本文件当作算法有效性的证据。
+状态：**阶段 0 首轮采样/召回诊断与阶段 1 配对 continuation 诊断代码已实现；尚未在真实模型服务上运行，也未接入 Vime 在线训练。** 2026-09-29 用户选择优先研究此方向。新颖性复核的当前结论是“简单方案不够新”，见[单独复核记录](effect_space_novelty_review_20260929.md)；不能把本文件当作算法有效性的证据。
+
+## 研究定位更新：残差感知的 Effect-Space Trust Region
+
+只按检索结果聚类以节省 rollout 不是足够强的论文贡献：[TreePS-RAG](https://arxiv.org/abs/2601.06922)已做检索集合相似度剪枝；[JMLR 2024 的 MDP homomorphism policy gradient](https://jmlr.org/papers/v25/23-1415.html)已研究抽象状态/动作上的策略梯度；[DPPO](https://arxiv.org/abs/2602.04879)已指出采样 token ratio 不是可靠的真实策略散度估计。因此拟研究的**不是**“首次提出抽象动作”或“首次用效果去重”，而是：在语言动作导致的效果类**并非精确 MDP 同态**时，怎样把 trust-region 约束分配到效果类之间与类内部，并用可测残差控制近似误差。但 [FiberPO](https://arxiv.org/abs/2603.08239) 已覆盖一般层级 gate，[BiPACE](https://arxiv.org/abs/2606.25556) 与 [GraphPO](https://arxiv.org/abs/2606.18954) 也覆盖 Agent 相似状态/动作的 credit 与误差分析；这个定位本身**尚不足以证明新颖**。
+
+固定状态 \(s\) 与状态依赖映射 \(z=f_s(a)\)，令推前策略为 \(\bar\pi(z\mid s)=\sum_{a:f_s(a)=z}\pi(a\mid s)\)。对同一映射下的两种策略，KL 的链式分解为
+
+\[
+D_{\mathrm{KL}}(\pi'\|\pi)
+=D_{\mathrm{KL}}(\bar\pi'\|\bar\pi)
++\mathbb E_{z\sim\bar\pi'}D_{\mathrm{KL}}(\pi'(\cdot\mid z,s)\|\pi(\cdot\mid z,s)).
+\]
+
+第一项是**跨效果类**的变化，第二项是**类内文本动作**的变化。这只是概率恒等式，不是新定理。若效果类内所有动作有相同奖励、相同后续状态分布，类内项可以不必受任务收益的 trust region 严格约束；但当前 Agent 不满足这个假设。后续 prompt 保留原 SEARCH query，环境缓存候选分数，RERANK 又使用分数。因此我们要测量类内残差，而不是将第二项武断设成零。
+
+一个待验证的局部量是 \(\Delta_Q(s,z)=\sup_{a,a':f_s(a)=f_s(a')=z}|Q^\pi(s,a)-Q^\pi(s,a')|\)。对于**固定状态与固定效果类**，两种类内条件分布下的期望价值差不超过 \(\Delta_Q(s,z)\,\mathrm{TV}(\pi'(\cdot\mid z,s),\pi(\cdot\mid z,s))\)。这来自有界函数的 TV 不等式；它**不是**完整多步策略改进保证。要推进到多步保证，还必须控制同类动作的转移差异及状态占用变化，避免只靠一个观测签名偷换 MDP 状态等价。
+
+候选算法形态为：约束效果分布散度，同时对类内散度施加按测得残差 \(\widehat\Delta_Q(s,z)\) 变化的权重。类内 continuation 差异大的效果类不能“免费”重排文本概率；差异小的类才允许放宽。在线估计 \(\bar\pi\) 的概率质量可能需要大量候选动作采样，如何低偏差、低成本地估计本身也是研究难点。目前**没有实现这一优化器，也没有证明该估计器有效**。
+
+首个判别实验仍应比训练便宜：先采同一前缀的不同 SEARCH query，测有序检索 ID 的碰撞率，并新增记录“同 ID 但检索分数不同”的比例；然后只对碰撞类做配对 continuation，分别估计类内/类间终局奖励差异。在无法证明同态前，不改现有 rollout 或 loss mask。若精确碰撞很少、或类内 Q 差异与类间一样大，就不值得接入 Vime 训练。
 
 ## 研究问题
 
@@ -55,6 +75,8 @@ PYTHONUNBUFFERED=1 python scripts/effect_space_pilot.py \
 
 从 pilot 中选有至少两个不同 query 的效果类。对每个 query 独立运行多次剩余轨迹，测量同效果类内与类间的回答正确率、证据链完成率、奖励均值/方差及下一步动作分布；分别在原始历史与候选规范化历史下测。若原始历史的类内差异显著，不能使用“精确等价”表述。需与独立 continuation 的 Monte Carlo 估计、TreePS 风格 Jaccard 聚类剪枝以及只缓存重复检索的工程基线对比。所有方法统计**总模型生成 token、SEARCH 调用、完整 continuation、墙钟时长**，不能仅固定轨迹条数。
 
+当前 `scripts/effect_space_continuation_pilot.py` 已实现上述实验的**第一步**：无标签选取相同有序检索 ID 的不同 query、配一组异类对照，独立采样真实环境 continuation，并计算回报/成功率差和同 query 的重复采样噪声尺度。它尚未估计下一步动作分布、跨策略概率质量或高置信残差证书，也未实施正式的 TreePS/GraphPO/BiPACE 基线。服务器运行步骤见[runbook](effect_space_server_runbook_cn.md)。
+
 ## 阶段 2：正式 RL 与论文评测（仅在阶段 1 通过后）
 
 1. 从 MuSiQue train 划出固定的内部 validation questions；只用剩余 train 训练和调参，官方 dev 2,417 题只在模型选择锁定后评测。train/eval 语料依现有 split 隔离。
@@ -69,4 +91,4 @@ PYTHONUNBUFFERED=1 python scripts/effect_space_pilot.py \
 
 ## 当前实现边界
 
-`effect_space.py` 只提供精确分组与“在额外假设下”的优势映射；pilot 只采第一步并做检索诊断。**没有**接入 Vime rollout group、没有状态规范化、没有证明无偏、没有训练出新模型。下一项工程工作取决于阶段 0/1 的真实测量，不能跳过这个 go/no-go 决策。
+`effect_space.py` 只提供精确分组、有限动作集上的 KL 恒等式诊断与“在额外假设下”的优势映射；首轮 pilot 采第一步并做检索诊断，配对 pilot 运行冻结模型的独立后续轨迹。**没有**接入 Vime rollout group、没有实际状态规范化的训练环境、没有证明无偏、没有训练出新模型。下一项工程工作取决于阶段 0/1 的真实测量，不能跳过这个 go/no-go 决策。

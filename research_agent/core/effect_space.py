@@ -8,6 +8,7 @@ scores can affect a later RERANK even when IDs and their order match.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -70,3 +71,47 @@ def jaccard(left: EffectKey, right: EffectKey) -> float:
     left_set, right_set = set(left), set(right)
     union = left_set | right_set
     return len(left_set & right_set) / len(union) if union else 1.0
+
+
+def finite_effect_kl_decomposition(
+    old_policy: Mapping[str, float],
+    new_policy: Mapping[str, float],
+    action_effects: Mapping[str, EffectKey],
+) -> tuple[float, float, float]:
+    """Exact KL chain rule on an explicitly enumerated finite action set.
+
+    Returns (full_action_kl, between_effect_kl, within_effect_kl). This is a
+    mathematical diagnostic, not an estimator of an LLM's full action-space KL.
+    Both policies must be normalized and the new policy must have support under
+    the old policy so all returned terms are finite.
+    """
+    actions = set(old_policy)
+    if actions != set(new_policy) or actions != set(action_effects) or not actions:
+        raise ValueError("Policies and effects must share a non-empty action set")
+    for policy in (old_policy, new_policy):
+        if any(not math.isfinite(value) or value < 0 for value in policy.values()):
+            raise ValueError("Policy probabilities must be finite and non-negative")
+        if not math.isclose(sum(policy.values()), 1.0, rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError("Policy probabilities must sum to one")
+    if any(new_policy[action] > 0 and old_policy[action] == 0 for action in actions):
+        raise ValueError("New policy must be absolutely continuous under old policy")
+
+    old_effects: dict[EffectKey, float] = defaultdict(float)
+    new_effects: dict[EffectKey, float] = defaultdict(float)
+    for action in actions:
+        effect = action_effects[action]
+        old_effects[effect] += old_policy[action]
+        new_effects[effect] += new_policy[action]
+
+    full = sum(new_policy[action] * math.log(new_policy[action] / old_policy[action])
+               for action in actions if new_policy[action] > 0)
+    between = sum(new_mass * math.log(new_mass / old_effects[effect])
+                  for effect, new_mass in new_effects.items() if new_mass > 0)
+    within = sum(
+        new_policy[action] * math.log(
+            (new_policy[action] / new_effects[action_effects[action]])
+            / (old_policy[action] / old_effects[action_effects[action]])
+        )
+        for action in actions if new_policy[action] > 0
+    )
+    return full, between, within
