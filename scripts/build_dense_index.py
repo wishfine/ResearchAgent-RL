@@ -38,11 +38,37 @@ def token_windows(tokenizer, text, max_length=512, overlap=64):
     content_length = max_length - tokenizer.num_special_tokens_to_add(pair=False)
     if not 0 <= overlap < content_length:
         raise ValueError("Invalid embedding window overlap")
+    builder = getattr(tokenizer, "build_inputs_with_special_tokens", None)
+    if not callable(builder):
+        # Transformers 5 tokenizers removed the legacy special-token builder.
+        # Use Encoding.truncate, not HF's overflow wrapper (which can flatten
+        # or drop overflow entries across versions). No decode/re-encode of
+        # slices: the tokenizer's own postprocessor adds special tokens.
+        backend = getattr(tokenizer, "backend_tokenizer", None)
+        if backend is None:
+            raise ValueError("Tokenizer requires a legacy special-token builder or tokenizers backend")
+        tokens = tokenizer.encode(text, add_special_tokens=False, truncation=False)
+        backend.no_truncation()
+        encoding = backend.encode(text, add_special_tokens=False)
+        if encoding.ids != tokens:
+            raise ValueError("HF/backend tokenization differs; refusing to build inconsistent windows")
+        encoding.truncate(content_length, stride=overlap, direction="right")
+        encodings = [encoding, *encoding.overflowing]
+        # Check complete, ordered coverage before adding any special tokens.
+        reconstructed = encodings[0].ids[:]
+        for item in encodings[1:]:
+            reconstructed.extend(item.ids[overlap:])
+        if reconstructed != tokens:
+            raise ValueError("Tokenizer window coverage incomplete; refusing to lose paragraph tail")
+        windows = [backend.post_process(item, add_special_tokens=True).ids for item in encodings]
+        if any(not window or len(window) > max_length for window in windows):
+            raise ValueError("Malformed tokenizer postprocessed windows")
+        return windows
     tokens = tokenizer.encode(text, add_special_tokens=False)
     starts = range(0, max(1, len(tokens)), content_length - overlap)
     result = []
     for start in starts:
-        window = tokenizer.build_inputs_with_special_tokens(tokens[start:start + content_length])
+        window = builder(tokens[start:start + content_length])
         result.append(window)
         if start + content_length >= len(tokens):
             break
@@ -72,6 +98,9 @@ def main():
         args.query_instruction = "" if fingerprint["pooling"] == "CLS" else (
             "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:")
     tokenizer = AutoTokenizer.from_pretrained(str(args.model_dir), local_files_only=True)
+    window_api = ("legacy_special_token_builder_v1" if callable(getattr(tokenizer, "build_inputs_with_special_tokens", None))
+                  else "encoding_truncate_postprocess_v1")
+    print(f"Preparing {type(tokenizer).__name__} windows with {window_api}", flush=True)
     corpus = CorpusStore(str(args.corpus_dir))
     corpus.load()
     if corpus._sqlite is None:
@@ -85,7 +114,8 @@ def main():
                                batch_size=args.batch_size,
                                window_fn=lambda text: token_windows(tokenizer, text, args.max_length, args.overlap),
                                window_policy={"mode": "token_windows", "max_length": args.max_length,
-                                              "overlap": args.overlap, "paragraph_score": "max_window_cosine"})
+                                              "overlap": args.overlap, "paragraph_score": "max_window_cosine",
+                                              "window_api": window_api})
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
     finally:
         corpus.close()

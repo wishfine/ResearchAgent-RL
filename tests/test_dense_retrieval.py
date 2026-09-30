@@ -250,3 +250,44 @@ def test_index_rejects_different_query_tokenization_policy(tmp_path):
     other.input_policy = "server_text_v1"
     with pytest.raises(ValueError, match="tokenization"):
         DenseCorpus(toy_corpus(), tmp_path, other, "dense", corpus_sha256="source")
+
+
+def test_windows_fail_closed_without_supported_backend_or_legacy_builder():
+    from scripts.build_dense_index import token_windows
+    class ModernTokenizer:
+        def num_special_tokens_to_add(self, pair=False):
+            return 2
+        def encode(self, text, add_special_tokens=False):
+            return list(range(1100))
+    with pytest.raises(ValueError, match="backend"):
+        token_windows(ModernTokenizer(), "long", max_length=512, overlap=64)
+
+
+@pytest.mark.parametrize("special_tokens", [True, False])
+def test_real_hf_tokenizer_windows_are_tail_complete_without_model_download(special_tokens):
+    transformers = pytest.importorskip("transformers")
+    from tokenizers import Tokenizer, models, pre_tokenizers, processors
+    from scripts.build_dense_index import token_windows
+    backend = Tokenizer(models.WordPiece({"[UNK]": 0, "[CLS]": 1, "[SEP]": 2,
+                                         "[PAD]": 3, "evidence": 4, "tail": 5}, unk_token="[UNK]"))
+    backend.pre_tokenizer = pre_tokenizers.Whitespace()
+    if special_tokens:
+        backend.post_processor = processors.TemplateProcessing(single="[CLS] $A [SEP]",
+                                                              special_tokens=[("[CLS]", 1), ("[SEP]", 2)])
+    tokenizer = transformers.PreTrainedTokenizerFast(tokenizer_object=backend,
+                    unk_token="[UNK]", cls_token="[CLS]", sep_token="[SEP]", pad_token="[PAD]")
+    text = "evidence " * 1100 + "tail"
+    windows = token_windows(tokenizer, text, max_length=512, overlap=64)
+    assert len(windows) == 3
+    assert all(len(window) <= 512 for window in windows)
+    if special_tokens:
+        assert all(window[0] == 1 and window[-1] == 2 for window in windows)
+        bodies = [window[1:-1] for window in windows]
+    else:
+        bodies = windows
+    reconstructed = bodies[0][:]
+    for body in bodies[1:]:
+        reconstructed.extend(body[64:])
+    assert reconstructed == tokenizer.encode(text, add_special_tokens=False, truncation=False)
+    assert bodies[-1][-1] == 5
+    assert token_windows(tokenizer, "tail", max_length=512, overlap=64) == [tokenizer.encode("tail")]

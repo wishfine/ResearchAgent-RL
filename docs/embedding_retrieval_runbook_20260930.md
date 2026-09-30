@@ -1,6 +1,6 @@
 # BGE / Qwen embedding：全库检索对照与35运行命令
 
-日期：2026-09-30。实现完成，本机toy/HTTP/状态回归测试通过；**实际embedding模型GPU服务、全量建索引及性能结果仍待35执行验证**。没有替用户启动远端服务，没有下载模型到本机，没有修改其他项目环境。
+日期：2026-09-30。实现完成，本机toy/HTTP/状态回归测试通过；用户35上两种embedding服务与canonical编码已验证通过，**全量建索引及检索质量结果仍待验证**。没有替用户启动远端服务，没有下载模型到本机，没有修改其他项目环境。
 
 ## 做了什么
 
@@ -219,3 +219,15 @@ echo "RUN_DIR=$RUN_DIR"
 回归覆盖本地query tokenization、预tokenized窗口不重复加special tokens以及不同query tokenization策略的索引拒绝；真实新客户端验证仍待35复跑。
 
 本次修复后本机全量pytest：111 passed、2 skipped，shell语法与diff检查通过。诊断输入附件SHA256为`b4a625b0ee7afd520cba024027654d76875df87451779106bc5cadd0b8c96b71`；附件包含用户实际BGE三种输入对照。Qwen通过结果由用户另贴终端输出提供。两种模型的召回效果均尚未验证。
+
+## 2026-09-30：窗口API兼容修复
+
+用户随后在35复核成功：BGE512维，HF CLS余弦约0.9999995；Qwen1024维，HF LAST余弦约0.999998；两者input_policy均为local_hf_token_ids_v1，实际验证日志目录`embedding_verify_fixed_20260930_155953`。
+
+建索引run `embedding_build_20260930_160535`的两个进程在窗口生成处失败：当前BertTokenizer和Qwen2Tokenizer均没有`build_inputs_with_special_tokens`。此时尚未开始embedding批量请求，不需要删除模型或已有缓存。
+
+兼容修复保留旧tokenizer路径；新tokenizer使用底层Encoding.truncate和自身postprocessor。每个段落检查HF/backend原始IDs一致性、所有窗口去重叠后的完整有序还原，以及包含特殊token后不超cap。没有decode/re-encode窗口，没有硬编码BERT/Qwen特殊token。索引window_policy记录实际window_api，旧配置不静默覆盖。
+
+本机独立Transformers5.17.0/tokenizers0.23.2环境使用无需模型下载的真实tokenizer复现原异常；修复后验证有/无特殊token两种长文窗口，含后文tail、顺序和短文本一致性。全量pytest为114 passed、2 skipped。直接使用HF overflow包装接口的候选实现因真实测试发现后文丢失而未发布。
+
+35无需降级依赖或重启服务；拉取修复后先跑少量窗口检查，再重新执行第3节后台建库命令。新的全量建库成功仍待远端日志确认。
