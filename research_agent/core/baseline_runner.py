@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable
 import re
 
 from research_agent.core.env.rollout_collector import ConversationCollector
+from research_agent.core.tools.base import ToolInfrastructureError
 
 
 def _token_f1(prediction: str, reference: str) -> float:
@@ -104,10 +105,12 @@ def run_episode(
     max_tokens: int = 256,
     temperature: float = 0.0,
     top_p: float | None = None,
+    system_prompt: str | None = None,
+    request_seed_base: int | None = None,
 ) -> dict:
     """Run one LLM-controlled environment episode and return a JSONL-ready record."""
     observation = env.reset(task)
-    collector = ConversationCollector(multi_hop=task.retrieval_scope == "split_corpus")
+    collector = ConversationCollector(system_prompt, multi_hop=task.retrieval_scope == "split_corpus")
     collector.add_user_message(task.user_query)
     steps: list[dict] = []
     total_latency = 0.0
@@ -127,6 +130,8 @@ def run_episode(
                 temperature=temperature,
                 top_p=top_p,
                 stop_tokens=["<|im_end|>"],
+                **({"seed": (request_seed_base + action_attempt_count) % (2**31)}
+                   if request_seed_base is not None else {}),
             )
         except Exception as exc:
             steps.append(
@@ -149,7 +154,20 @@ def run_episode(
         completion_tokens += turn.completion_tokens
         action_attempt_count += 1
         parsed_action_count += int(turn.action.tool != "INVALID")
-        observation, done, reason = env.step(turn.action)
+        try:
+            observation, done, reason = env.step(turn.action)
+        except ToolInfrastructureError as exc:
+            steps.append({"observation": observation_before, "action": turn.action.to_dict(),
+                          "tool_result": None, "reasoning": turn.reasoning, "raw_content": turn.raw_content,
+                          "latency_sec": turn.latency_sec, "token_usage": {
+                              "prompt_tokens": turn.prompt_tokens, "completion_tokens": turn.completion_tokens},
+                          "usage_reported": getattr(turn, "usage_reported", False),
+                          "finish_reason": getattr(turn, "finish_reason", None),
+                          "error": f"infrastructure_error: {exc}"})
+            collector.add_assistant_response(turn.raw_content)
+            collector.add_observation(turn.action.tool, False, {}, str(exc))
+            termination_reason = "infrastructure_error"
+            break
         trajectory_step = env._state.trajectory[-1]
         steps.append(
             {
@@ -166,6 +184,8 @@ def run_episode(
                     "completion_tokens": turn.completion_tokens,
                 },
                 "error": trajectory_step.error_message,
+                "usage_reported": getattr(turn, "usage_reported", False),
+                "finish_reason": getattr(turn, "finish_reason", None),
             }
         )
         collector.add_assistant_response(turn.raw_content)
@@ -182,7 +202,7 @@ def run_episode(
             )
 
     episode = env.finalize_episode()
-    if termination_reason == "actor_error":
+    if termination_reason in {"actor_error", "infrastructure_error"}:
         episode.done_reason = termination_reason
     metrics = evaluate_episode(
         episode,

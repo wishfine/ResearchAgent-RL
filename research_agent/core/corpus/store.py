@@ -249,10 +249,13 @@ class CorpusStore:
                 if doc_ids is not None and chunk.doc_id not in doc_ids:
                     continue
                     
-                if score > 0:
+                # rank_bm25 may assign zero/negative IDF to common matching
+                # terms. Score sign is not a test for lexical relevance.
+                # This legacy-JSON fix does not change SQLite FTS5 ranking.
+                if set(query_tokens) & set(chunk.content.lower().split()):
                     candidates_data.append((chunk_id, float(score)))
                     
-            candidates_data.sort(key=lambda x: x[1], reverse=True)
+            candidates_data.sort(key=lambda x: (-x[1], x[0]))
             
             candidates = []
             for rank, (chunk_id, score) in enumerate(candidates_data[:topk], start=1):

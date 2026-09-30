@@ -20,17 +20,29 @@ class RolloutSegment:
         return f"<|im_start|>{self.role}\n{self.text}<|im_end|>\n"
 
 
-class ConversationCollector:
-    def __init__(self, system_prompt: str = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
+DEFAULT_SYSTEM_PROMPT = """You are a document-grounded research agent with SEARCH, READ, RERANK, CITE, and ANSWER tools.
 Return one action only: one JSON object wrapped in one pair of <action> and </action> tags.
 Do not emit <reasoning>, <think>, Markdown, prose before or after the action, placeholder text, or a second action.
 The JSON object must have `tool`, `intent`, and `params`. Valid params are: SEARCH(query, topk); READ(chunk_ids); RERANK(query, candidate_chunk_ids, topk); CITE(chunk_ids, claims); ANSWER(answer_text, cited_chunk_ids).
 Follow SEARCH -> READ -> CITE -> ANSWER. Never call ANSWER with an empty cited_chunk_ids list.
 Only cite chunk IDs returned by READ. Do not answer from common knowledge; use retrieved evidence.
 Keep every action field inside params: never put action fields beside params.
-After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER.""", *, multi_hop: bool = False):
-        if multi_hop:
-            system_prompt = MULTIHOP_SYSTEM_PROMPT
+After a successful SEARCH with candidates, READ a returned chunk next; do not repeat SEARCH. After READ, use CITE; after CITE, use ANSWER."""
+
+CITE_FIRST_SYSTEM_PROMPT = MULTIHOP_SYSTEM_PROMPT + """
+ANSWER requires a successful CITE action first. Every cited_chunk_id in ANSWER must already have been READ and successfully CITE'd. READ alone does not authorize ANSWER.
+SEARCH topk must be an integer from 1 to 100."""
+
+ADAPTIVE_SYSTEM_PROMPT = CITE_FIRST_SYSTEM_PROMPT + """
+Before submitting an answer, check whether the documents you READ support all relations needed by the question. If a relation is missing, SEARCH again using a specific entity or fact visible in the question or previous tool observations, then READ the relevant returned chunks. Do not merely guess the missing relation.
+Read selectively: choose the chunks most likely to resolve the missing relation, not a fixed number of chunks. Do not assume that one SEARCH and two READ chunks suffice. Avoid repeating an unchanged query or reading the same evidence without a new purpose.
+Continue only when more evidence is needed; do not perform extra searches once the evidence suffices. Never invent a chunk ID or reveal internal reasoning; still emit exactly one action per turn."""
+
+
+class ConversationCollector:
+    def __init__(self, system_prompt: str | None = None, *, multi_hop: bool = False):
+        if system_prompt is None:
+            system_prompt = MULTIHOP_SYSTEM_PROMPT if multi_hop else DEFAULT_SYSTEM_PROMPT
         self.segments: List[RolloutSegment] = []
         # Add system prompt as non-trainable
         self.segments.append(RolloutSegment(

@@ -92,3 +92,9 @@ printf 'PROBE_OUT=%s\n' "$PROBE_OUT"
 - 三个诊断Python脚本的`--help`、盘点shell脚本`bash -n`均通过。
 - 全量测试：81 passed、2 skipped、1 failed。失败项为`TestHotpotQAPreparation.test_build_split_creates_isolated_train_and_eval_corpora`，检索`evidence`返回空列表；在未改动的`3aecc30`代码快照、相同依赖环境下复现，属于已有问题，本次未改动该测试或CorpusStore。不能将本次验证表述为全量测试通过。
 - 本轮发布已有冻结策略诊断代码和规划/运行文档；`runtime_efficiency_pilot.py`及任意前缀KEEP/REPLAN/ALT的完整新实验驱动尚未实现。
+
+## 后续状态更新：协议诊断可运行（2026-09-30）
+
+以上是此前阶段的历史记录。本次用户已完成SFT874物化迁移、代码/数据同步、CUDA12.9开发库配置；35 GPU0上的vLLM8105已实测32K服务和真实10题episode成功落盘。模型位于`/local_data/zhangyonglin/models/ResearchAgent-Qwen3.5-9B-SFT874`，客户端环境仍为`research-agent-runtime`；迁移的外部flash-attn因35 glibc不匹配已卸载，vLLM内部路径可运行。
+
+新增版本化全文READ与四组协议诊断驱动已通过本机端到端测试，运行说明见`musique_protocol_adaptation_20260930.md`。之前全量测试的旧JSON BM25负/零分匹配丢失已用回归测试修复；本轮全量pytest为95 passed、2 skipped。SQLite排名未改。任意前缀干预驱动依然未完成；新四组真实GPU实验待35用户执行，不能把本机toy HTTP测试记为研究结果。

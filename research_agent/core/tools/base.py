@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict
 from abc import ABC, abstractmethod
 
+class ToolInfrastructureError(RuntimeError):
+    """Unavailable retrieval/model service; not an invalid policy action."""
+
 @dataclass
 class ToolResult:
     success: bool

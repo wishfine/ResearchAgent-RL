@@ -15,6 +15,8 @@ class LLMResponse:
     reasoning: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    usage_reported: bool = False
+    finish_reason: str | None = None
 
 class LLMClient:
     def __init__(
@@ -58,6 +60,7 @@ class LLMClient:
         top_p: Optional[float] = None,
         model: Optional[str] = None,
         stop_tokens: List[str] = None,
+        seed: int | None = None,
     ) -> LLMResponse:
         """Generate one turn and retain server-provided usage and reasoning fields."""
         # 1. Determine if we are using chat or raw completion
@@ -98,6 +101,8 @@ class LLMClient:
                 data["stop"] = stop_tokens
 
         data["model"] = model or self.model
+        if seed is not None:
+            data["seed"] = seed
 
         req = urllib.request.Request(
             target_url,
@@ -125,6 +130,9 @@ class LLMClient:
                     reasoning=reasoning,
                     prompt_tokens=int(usage.get("prompt_tokens") or 0),
                     completion_tokens=int(usage.get("completion_tokens") or 0),
+                    usage_reported=all(isinstance(usage.get(key), int) for key in
+                                       ("prompt_tokens", "completion_tokens")),
+                    finish_reason=resp_data["choices"][0].get("finish_reason"),
                 )
         except urllib.error.HTTPError as e:
             err_content = e.read().decode("utf-8") if e else str(e)

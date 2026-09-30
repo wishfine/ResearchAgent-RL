@@ -19,6 +19,8 @@ class ActorTurn:
     latency_sec: float
     prompt_tokens: int
     completion_tokens: int
+    usage_reported: bool = False
+    finish_reason: str | None = None
 
 
 class LLMActor:
@@ -36,6 +38,7 @@ class LLMActor:
         temperature: float = 0.0,
         top_p: Optional[float] = None,
         stop_tokens: Optional[list[str]] = None,
+        seed: int | None = None,
     ) -> ActorTurn:
         started = perf_counter()
         response = self.client.generate_response(
@@ -44,6 +47,7 @@ class LLMActor:
             temperature=temperature,
             top_p=top_p,
             stop_tokens=stop_tokens,
+            **({"seed": seed} if seed is not None else {}),
         )
         latency_sec = perf_counter() - started
 
@@ -60,4 +64,6 @@ class LLMActor:
             latency_sec=latency_sec,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
+            usage_reported=getattr(response, "usage_reported", False),
+            finish_reason=getattr(response, "finish_reason", None),
         )

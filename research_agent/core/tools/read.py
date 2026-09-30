@@ -7,7 +7,15 @@ class ReadTool(BaseTool):
     name = "READ"
     description = "Read chunks and extract key passages"
 
+    def __init__(self, mode: str = "head300"):
+        if mode not in {"head300", "full"}:
+            raise ValueError("READ mode must be head300 or full")
+        self.mode = mode
+
     def execute(self, params: dict, state: EnvState) -> ToolResult:
+        valid, error = self.validate_params(params)
+        if not valid:
+            raise ValueError(error)
         chunk_ids = params["chunk_ids"]
 
         if not chunk_ids:
@@ -52,22 +60,29 @@ class ReadTool(BaseTool):
 
         summaries = []
         n_actually_new = 0
+        n_truncated = 0
 
         for chunk in chunks:
-            # Deterministic truncation: take first 300 chars
-            truncated_text = chunk.content[:300] + ("..." if len(chunk.content) > 300 else "")
+            # Preserve legacy observations unless full-paragraph mode is explicit.
+            truncated = self.mode == "head300" and len(chunk.content) > 300
+            n_truncated += int(truncated)
+            truncated_text = chunk.content[:300] + "..." if truncated else chunk.content
             
             summary = ReadSummary(
                 chunk_id=chunk.chunk_id,
                 summary=truncated_text,
                 key_claims=[truncated_text],
                 evidence_strength=1.0,
-                key_passages=[chunk.content[:300]]
+                key_passages=[chunk.content if self.mode == "full" else chunk.content[:300]]
             )
             
             is_new = state.add_read_summary(summary)
             if is_new:
                 n_actually_new += 1
+            elif self.mode == "full":
+                # A full re-read must refresh the evidence stored in state too.
+                state.read_summaries = [summary if old.chunk_id == chunk.chunk_id else old
+                                        for old in state.read_summaries]
 
             summaries.append({
                 "chunk_id": chunk.chunk_id,
@@ -81,6 +96,8 @@ class ReadTool(BaseTool):
             stats={
                 "n_read": len(chunks),
                 "n_new": n_actually_new,
+                "n_truncated": n_truncated,
+                "read_mode": self.mode,
             }
         )
 
@@ -89,4 +106,6 @@ class ReadTool(BaseTool):
             return False, "READ requires 'chunk_ids' param"
         if not isinstance(params["chunk_ids"], list):
             return False, "READ 'chunk_ids' must be list"
+        if any(not isinstance(cid, str) or not cid for cid in params["chunk_ids"]):
+            return False, "READ chunk IDs must be non-empty strings"
         return True, ""

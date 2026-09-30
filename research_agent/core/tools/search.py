@@ -17,6 +17,9 @@ class SearchTool(BaseTool):
         return [chunk for chunk in corpus.chunks.values() if chunk.doc_id in allowed_doc_ids]
 
     def execute(self, params: dict, state: EnvState) -> ToolResult:
+        valid, error = self.validate_params(params)
+        if not valid:
+            raise ValueError(error)
         query = params["query"]
         topk = params.get("topk", 10)
 
@@ -95,4 +98,9 @@ class SearchTool(BaseTool):
     def validate_params(self, params: dict) -> tuple[bool, str]:
         if "query" not in params:
             return False, "SEARCH requires 'query' param"
+        if not isinstance(params["query"], str) or not params["query"].strip():
+            return False, "SEARCH query must be a non-empty string"
+        topk = params.get("topk", 10)
+        if type(topk) is not int or not 1 <= topk <= 100:
+            return False, "SEARCH topk must be an integer between 1 and 100"
         return True, ""

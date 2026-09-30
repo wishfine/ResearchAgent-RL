@@ -16,7 +16,7 @@ from research_agent.core.corpus.store import CorpusStore
 
 
 def evaluate(tasks_dir: Path, corpus_dir: Path, topks: list[int],
-             max_tasks: int | None = None, seed: int = 42) -> dict:
+             max_tasks: int | None = None, seed: int = 42, *, retrieval_config: dict | None = None) -> dict:
     if not topks or any(value <= 0 for value in topks):
         raise ValueError("topks must contain positive integers")
     paths = sorted(tasks_dir.glob("*.json"))
@@ -27,6 +27,14 @@ def evaluate(tasks_dir: Path, corpus_dir: Path, topks: list[int],
         raise ValueError(f"No tasks found in {tasks_dir}")
     corpus = CorpusStore(str(corpus_dir))
     corpus.load()
+    if retrieval_config:
+        from research_agent.core.corpus.dense import DenseCorpus, EmbeddingClient, file_hash
+        index = json.loads((Path(retrieval_config["index_dir"]) / "manifest.json").read_text())
+        encoder = EmbeddingClient(retrieval_config["embedding_url"], index["encoder_model"],
+                                  index["query_instruction"], event_log=retrieval_config.get("event_log"),
+                                  fingerprint=index["encoder_fingerprint"])
+        corpus = DenseCorpus(corpus, retrieval_config["index_dir"], encoder,
+                             retrieval_config["mode"], corpus_sha256=file_hash(corpus_dir / "corpus.sqlite"))
     if not len(corpus):
         raise ValueError(f"Empty corpus: {corpus_dir}")
 
@@ -87,6 +95,8 @@ def evaluate(tasks_dir: Path, corpus_dir: Path, topks: list[int],
             for topk, count in totals.items()
         },
     }
+    if retrieval_config:
+        result["retrieval"] = {"mode": retrieval_config["mode"], "index_manifest": corpus.manifest}
     corpus.close()
     return result
 
@@ -99,9 +109,17 @@ def main() -> None:
     parser.add_argument("--max_tasks", type=int)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_file", type=Path)
+    parser.add_argument("--retrieval", choices=["bm25", "dense", "hybrid"], default="bm25")
+    parser.add_argument("--dense_index", type=Path)
+    parser.add_argument("--embedding_url", default="http://127.0.0.1:8106/v1")
     args = parser.parse_args()
+    if args.retrieval != "bm25" and (args.dense_index is None or args.output_file is None):
+        parser.error("Dense/hybrid audit requires --dense_index and --output_file for cost logging")
+    config = {"mode": args.retrieval, "index_dir": args.dense_index,
+              "embedding_url": args.embedding_url,
+              "event_log": str(args.output_file) + ".embedding_cost.jsonl"} if args.retrieval != "bm25" else None
     result = evaluate(args.tasks_dir, args.corpus_dir, args.topk,
-                      max_tasks=args.max_tasks, seed=args.seed)
+                      max_tasks=args.max_tasks, seed=args.seed, retrieval_config=config)
     output = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output_file:
         args.output_file.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import json
+from pathlib import Path
+import tempfile
 
 from research_agent.core.corpus.store import CorpusStore
 from research_agent.core.env.state import EnvState
@@ -10,6 +13,18 @@ from research_agent.core.tools.search import SearchTool
 
 
 class TestSearchTool(unittest.TestCase):
+    def test_common_term_with_nonpositive_bm25_score_is_not_dropped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for index in range(3):
+                (Path(directory) / f"d{index}.json").write_text(json.dumps({
+                    "doc_id": f"d{index}", "title": "Evidence",
+                    "chunks": [{"chunk_id": f"c{index}", "content": "evidence common"}]}))
+            corpus = CorpusStore(directory)
+            corpus.load()
+            result = corpus.search("evidence", doc_ids=["d0"])
+            self.assertEqual([candidate.chunk_id for candidate in result], ["c0"])
+            self.assertEqual(corpus.search("nonexistent"), [])
+
     def test_scoped_complete_search_includes_zero_score_candidates(self):
         corpus = CorpusStore()
         document = Document(doc_id="task", title="task")

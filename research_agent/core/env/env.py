@@ -6,7 +6,7 @@ from research_agent.core.schema.task import TaskSample
 from research_agent.core.schema.observation import Observation
 from research_agent.core.schema.action import Action
 from research_agent.core.schema.result import EpisodeResult
-from research_agent.core.tools.base import BaseTool, ToolResult
+from research_agent.core.tools.base import BaseTool, ToolResult, ToolInfrastructureError
 from .state import EnvState
 from research_agent.core.corpus.store import CorpusStore
 
@@ -72,6 +72,8 @@ class ResearchEnv:
 
         try:
             result = tool.execute(action.params, state)
+        except ToolInfrastructureError:
+            raise
         except Exception as e:
             error_msg = f"Tool execution failed: {e}"
             state.record_invalid_action(error_msg)
