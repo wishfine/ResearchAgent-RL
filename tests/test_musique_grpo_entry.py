@@ -35,3 +35,4 @@ def test_fast_grpo_entry_config_without_gpu_side_effects():
     assert "ATTENTION_BACKEND=auto" in result.stdout
     assert "NUM_ROLLOUT=200" in result.stdout
     assert "CUDA_HOME=/local_data/tester/cuda-toolkit-12.9\n" in result.stdout
+    assert "RAY_DASHBOARD_AGENT_PORT=52366" in result.stdout

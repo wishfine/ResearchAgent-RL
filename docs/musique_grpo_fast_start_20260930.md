@@ -139,3 +139,48 @@ tail -n 60 "$BUILD_DIR/build.log"
 脚本离线构建，固定原source SHA、三包2.10版本、Torch CUDA12.9、系统g++，只更新torch binding，不更新torch/vLLM。先构建wheel、readelf验证所需GLIBC不高于宿主，再备份旧.so、安装并测试导入。失败保留build.log，旧binding在构建失败时不动；安装后若导入失败不自动删除/降级其他包。已移除的外部FlashAttention不在本次修复范围。
 
 编译不使用GPU；之后2步GRPO才验证TE/GDN/backward/optimizer。用户最新盘点GPU0=56140MiB、GPU1=632MiB、GPU2=8298MiB、GPU3–7=13MiB：GPU2在忙，启动六卡前先确认PID/用途，不依据显存猜测并自动杀进程。
+
+## 35双卡推理验收与Ray多集群端口冲突（2026-09-30）
+
+TE binding在35原生重建成功，训练probe实际给出`TRAIN_IMPORTS_READY []`。独立vLLM诊断使用GPU6/7、TP2、BF16、0.70显存比例、`max_model_len=262144`和NCCL weight-transfer backend，17:01:33出现`Application startup complete`。每rank权重8.91GiB、KV cache预算37.91GiB、实际CUDA graph池3.46GiB；engine打印2,466,775缓存tokens和256K请求容量9.41x。这是初始化/容量证据，不是实测256K请求吞吐或训练可承载256K轨迹的证据。用户要求保留262144上下文上限，本修复不更改它。
+
+第一次RL run `vime_musique_grpo_smoke2_20260930_164314`成功加载SFT训练checkpoint，但rollout WorkerProc初始化失败，原始Ray stdout/stderr未给出底层worker异常。独立CLI成功仅缩小排查范围，未证明Ray/Vime问题已修好。加载训练sitecustomize后的两个worker模块导入成功且logger未禁用，也不证明GPU初始化成功。
+
+第二次run `vime_musique_grpo_smoke2_retry_20260930_171452`在job submit阶段失败，错误`No available agent to submit job`。原始`dashboard_agent.log`确认新Agent绑定52365连续6次失败；旧集群Agent PID3184255仍占该端口。该次失败发生在训练提交之前，与模型或上下文无关。先前只换6399/8299未隔离Agent端口，不能解决此冲突。
+
+修复：公共入口支持`RAY_DASHBOARD_AGENT_PORT`并传入官方`--dashboard-agent-listen-port`；历史入口默认52365不变，MuSiQue默认52366。三个服务端口必须有效且互不相同；启动前检查被占用即拒绝，不杀进程。启动后除了Dashboard版本接口，还等待Agent `/api/local_raylet_healthz`，避免把只启动Dashboard误当成Agent已就绪。保持`RAY_AUTO_STOP=0`，不自动停旧集群。回归测试及shell语法在本机通过，服务器训练更新仍待验收。
+
+第三次重跑使用尚未使用的一组三端口和短临时目录，在35执行（诊断服务若仍在前台，先在该终端Ctrl+C；不操作GPU0服务）：
+
+```bash
+(
+set -euo pipefail
+if ! ip -4 -brief address | grep -q '172\.22\.0\.35/'; then
+  echo "当前不是35，停止"
+  exit 1
+fi
+cd "/local_data/$USER/ResearchAgent-RL"
+git pull --ff-only origin slime-rewrite
+BASE="/local_data/$USER/research-agent-rl-data"
+BUSY="$(nvidia-smi -i 2,3,4,5,6,7 --query-compute-apps=pid,process_name,used_memory --format=csv,noheader)"
+if [ -n "$BUSY" ]; then
+  printf 'GPU2–7有占用，未启动：\n%s\n' "$BUSY"
+  exit 1
+fi
+unset RAY_ADDRESS
+export VLLM_WORKER_MULTIPROC_METHOD=spawn PYTHONFAULTHANDLER=1 RAY_DEDUP_LOGS=0
+RUN_DIR="$BASE/outputs/vime_musique_grpo_smoke2_agentport_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$RUN_DIR"
+PYTHONPATH="" GPU_IDS=2,3,4,5,6,7 ACTOR_GPUS=4 ROLLOUT_GPUS=2 \
+NUM_ROLLOUT=2 N_SAMPLES_PER_PROMPT=8 GLOBAL_BATCH_SIZE=8 SAVE_INTERVAL=2 \
+RAY_PORT=6400 RAY_DASHBOARD_PORT=8300 RAY_DASHBOARD_AGENT_PORT=52366 \
+RAY_TMPDIR="/local_data/$USER/r3" RAY_AUTO_STOP=0 VLLM_LOGGING_LEVEL=DEBUG \
+RUN_DIR="$RUN_DIR" nohup bash scripts/run_vime_musique_grpo.sh \
+  >"$RUN_DIR/driver.log" 2>&1 < /dev/null &
+echo $! > "$RUN_DIR/pid.txt"
+printf '%s\n' "$RUN_DIR" > "$BASE/latest_musique_grpo.txt"
+echo "RUN_DIR=$RUN_DIR"
+)
+```
+
+这组三端口被占用时会失败并打印具体端口，不继续叠加集群。只有出现实际train step、训练后的disk reload与job succeeded才算RL smoke通过，不跳到200步。

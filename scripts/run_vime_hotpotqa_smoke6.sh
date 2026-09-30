@@ -89,6 +89,7 @@ ACTOR_GPUS="${ACTOR_GPUS:-4}"
 ROLLOUT_GPUS="${ROLLOUT_GPUS:-2}"
 RAY_PORT="${RAY_PORT:-6379}"
 RAY_DASHBOARD_PORT="${RAY_DASHBOARD_PORT:-8265}"
+RAY_DASHBOARD_AGENT_PORT="${RAY_DASHBOARD_AGENT_PORT:-52365}"
 RAY_AUTO_STOP="${RAY_AUTO_STOP:-1}"
 ATTENTION_BACKEND="${ATTENTION_BACKEND:-flash}"
 ROLLOUT_MAX_RESPONSE_LEN="${ROLLOUT_MAX_RESPONSE_LEN:-256}"
@@ -98,6 +99,9 @@ fail() {
   echo "[ERROR] $*" >&2
   exit 1
 }
+
+source "$PROJECT_ROOT/scripts/ray_start_ports.sh"
+build_ray_start_port_args || exit 1
 
 IFS=',' read -r -a GPU_LIST <<<"$GPU_IDS"
 [[ "$ACTOR_GPUS" =~ ^[1-9][0-9]*$ ]] || fail "ACTOR_GPUS must be a positive integer"
@@ -254,6 +258,19 @@ if "$TRAIN_ENV/bin/ray" status --address="127.0.0.1:$RAY_PORT" >/dev/null 2>&1; 
   fail "A Ray cluster is already listening on port $RAY_PORT. Identify its owner/run before cleanup, or choose unused RAY_PORT and RAY_DASHBOARD_PORT. Do not globally stop unrelated clusters."
 fi
 
+# In particular, an old cluster can still own the default agent HTTP port
+# even when the new head/dashboard ports and all requested GPUs are free.
+"$TRAIN_ENV/bin/python" - "$RAY_PORT" "$RAY_DASHBOARD_PORT" "$RAY_DASHBOARD_AGENT_PORT" <<'PY'
+import socket
+import sys
+for name, value in zip(("Ray head", "dashboard", "dashboard agent"), sys.argv[1:]):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("0.0.0.0", int(value)))
+        except OSError as exc:
+            raise SystemExit(f"[ERROR] {name} port {value} is unavailable: {exc}. Choose an unused port; no process was stopped.")
+PY
+
 ray_started=0
 cleanup_ray() {
   local status=$?
@@ -273,8 +290,7 @@ source scripts/models/qwen3.5-9B.sh
 
 "$TRAIN_ENV/bin/ray" start --head \
   --node-ip-address 127.0.0.1 \
-  --port "$RAY_PORT" \
-  --dashboard-port "$RAY_DASHBOARD_PORT" \
+  "${RAY_START_PORT_ARGS[@]}" \
   --num-gpus "$TOTAL_GPUS" \
   --disable-usage-stats
 ray_started=1
@@ -283,14 +299,15 @@ ray_started=1
 # accepting connections.  Wait rather than racing `ray job submit` below.
 dashboard_ready=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:$RAY_DASHBOARD_PORT/api/version" >/dev/null; then
+  if curl -fsS --max-time 2 "http://127.0.0.1:$RAY_DASHBOARD_PORT/api/version" >/dev/null 2>&1 \
+    && curl -fsS --max-time 2 "http://127.0.0.1:$RAY_DASHBOARD_AGENT_PORT/api/local_raylet_healthz" >/dev/null 2>&1; then
     dashboard_ready=1
     break
   fi
   sleep 1
 done
 if [[ "$dashboard_ready" -ne 1 ]]; then
-  echo "Ray dashboard did not become ready within 60 seconds." >&2
+  echo "Ray dashboard/agent did not become ready within 60 attempts (head=$RAY_PORT dashboard=$RAY_DASHBOARD_PORT agent=$RAY_DASHBOARD_AGENT_PORT)." >&2
   find "$RAY_TMPDIR/ray/session_latest/logs" -maxdepth 1 -type f \
     \( -name 'dashboard*.log' -o -name 'dashboard*.err' \) -print -exec tail -n 80 {} \; \
     2>/dev/null || true
