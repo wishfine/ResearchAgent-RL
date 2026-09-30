@@ -77,7 +77,8 @@ def main():
     if corpus._sqlite is None:
         parser.error("Provide the fixed MuSiQue SQLite corpus")
     encoder = EmbeddingClient(args.embedding_url, args.embedding_model, args.query_instruction,
-                              event_log=args.index_dir / "embedding_cost.jsonl", fingerprint=fingerprint)
+                              event_log=args.index_dir / "embedding_cost.jsonl", fingerprint=fingerprint,
+                              tokenizer=tokenizer)
     try:
         manifest = build_index(corpus, args.index_dir, encoder,
                                corpus_sha256=file_hash(args.corpus_dir / "corpus.sqlite"),

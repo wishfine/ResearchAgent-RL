@@ -35,7 +35,7 @@ Qwen0.6B支持1024维、32K，官方示例采用LAST pooling和归一化，检�
 
 每次embedding请求写`embedding_cost.jsonl`：调用前记录请求、batch数量、实际输入hash，成功记录真实usage/延迟，失败记error。失败/中断不算免费。没有真实usage就标记未知，不补0作为真实成本。embedding服务断连在Agent中记`infrastructure_error`并停止，不计成policy非法动作。
 
-## 1. 35拉取代码，按需下载Qwen
+## 1. 35拉取代码，按需从魔搭下载Qwen
 
 ```bash
 (
@@ -44,12 +44,18 @@ PROJECT="/local_data/$USER/ResearchAgent-RL"
 PY="/local_data/$USER/conda_envs/research-agent-runtime/bin/python"
 cd "$PROJECT"
 git pull --ff-only origin slime-rewrite
-"$PY" scripts/download_qwen_embedding.py \
-  --model_dir "/local_data/$USER/models/Qwen3-Embedding-0.6B"
+TOOLS="/local_data/$USER/research-agent-rl-data/download_tools/modelscope"
+mkdir -p "$(dirname "$TOOLS")"
+"$PY" -m venv "$TOOLS"
+"$TOOLS/bin/python" -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple modelscope
+"$TOOLS/bin/modelscope" download --model Qwen/Qwen3-Embedding-0.6B \
+  --local_dir "/local_data/$USER/models/Qwen3-Embedding-0.6B"
 )
 ```
 
-下载脚本解析并固定实际Hub revision，保存receipt；网络断了可重复同条命令按receipt继续。已存在无receipt的模型目录不覆盖，请确认后复用或另选路径。BGE本地模型不下载。
+35访问Hugging Face时实际报`Network is unreachable`；用户随后已通过魔搭下载13文件并完成文件存在检查。模型直接落35，不在Mac下载/上传。ModelScope安装在独立工具环境，不修改research-agent-runtime。BGE本地模型不下载。保留魔搭下载元数据和实际文件SHA；`master`是可变分支名，不能称为固定commit。后续索引以实际model/tokenizer文件SHA锁定。
+
+原`scripts/download_qwen_embedding.py`仍仅用于可访问HF的环境，不作为35默认命令。
 
 ## 2. 启动两个embedding服务
 
@@ -197,3 +203,19 @@ echo "RUN_DIR=$RUN_DIR"
 本机Python3.12全量测试：**106 passed、2 skipped**；三个shell脚本语法和Python CLI帮助入口通过。新增测试包含真实toy HTTP文本/token-ID请求、返回乱序恢复、向量归一化、窗口后文覆盖、原段落ID去重、docscope、RRF接口、损坏的完整/未完成索引拒绝、模型文件替换拒绝、infra_error与policy-invalid分离。独立只读审查发现的两项索引完整性问题均已修复并验证。
 
 这些验证不等于BGE/Qwen实际GPU inference通过；第2步backend检查及后续真实召回/Agent结果仍待35执行。
+
+## 2026-09-30：真实backend验证及tokenization修复
+
+用户在35提供了以下真实结果，不是本机toy测试：
+
+- Qwen3-Embedding-0.6B，4096服务cap，1024维；HF LAST vs vLLM cosine三条为0.99999815、0.99999827、0.99999791，旧验证完整通过（含文本/token-ID一致性）。尚不是检索质量结果。
+- BGE服务已就绪，但文本路径HF CLS cosine约0.95128、0.95130、0.96711；HF tokenizer合计43 tokens，服务文本路径45 tokens。显式`add_special_tokens=true`未改变结果。
+- 同一BGE权重与pooling，发送精确HF token IDs并设`add_special_tokens=false`后，usage=43 tokens、HF CLS cosine约0.99999958、0.99999958、0.99999970。mean/pooler_output比较不支持将其归因为pooling错误。原因定位到文本输入预处理路径，不宣称已定位到底层具体大小写/分词规则。
+
+修复：EmbeddingClient对生产BGE/Qwen的query字符串使用fingerprint指定的本地HF tokenizer；document窗口本来就是本地token IDs，两者现在统一发送token IDs且不重复添加special tokens。验证脚本同样使用本地tokenizer。旧raw-text client仍仅用于无本地tokenizer的调用；实际生产builder/evaluator/Agent均使用canonical策略。
+
+索引升为`dense-windows-v2`并记录`input_policy=local_hf_token_ids_v1`；旧索引/续跑配置不静默混用。若已有v1索引请另建目录；用户在诊断期间尚未报告建库。服务不用重启，拉取客户端修复后重新验证BGE/Qwen再建库。没有调低0.999阈值。
+
+回归覆盖本地query tokenization、预tokenized窗口不重复加special tokens以及不同query tokenization策略的索引拒绝；真实新客户端验证仍待35复跑。
+
+本次修复后本机全量pytest：111 passed、2 skipped，shell语法与diff检查通过。诊断输入附件SHA256为`b4a625b0ee7afd520cba024027654d76875df87451779106bc5cadd0b8c96b71`；附件包含用户实际BGE三种输入对照。Qwen通过结果由用户另贴终端输出提供。两种模型的召回效果均尚未验证。

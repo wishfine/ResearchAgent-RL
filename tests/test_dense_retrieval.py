@@ -216,3 +216,37 @@ def test_window_indexing_through_real_embedding_http(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_local_tokenizer_is_used_for_queries_without_double_special_tokens(monkeypatch):
+    from io import BytesIO
+    from research_agent.core.corpus.dense import EmbeddingClient
+    class Tokenizer:
+        def encode(self, text, add_special_tokens):
+            assert add_special_tokens is True
+            assert text == "The river."
+            return [101, 100, 10835, 119, 102]
+    requests = []
+    def respond(request, timeout):
+        requests.append(json.loads(request.data))
+        return BytesIO(b'{"data":[{"index":0,"embedding":[1,0]}]}')
+    monkeypatch.setattr("urllib.request.urlopen", respond)
+    client = EmbeddingClient("http://localhost/v1", "bge", tokenizer=Tokenizer())
+    client.encode(["The river."])
+    assert requests[-1]["input"] == [[101, 100, 10835, 119, 102]]
+    assert requests[-1]["add_special_tokens"] is False
+    client.encode([[101, 100, 10835, 119, 102]])
+    assert requests[-1]["input"] == [[101, 100, 10835, 119, 102]]
+    assert requests[-1]["add_special_tokens"] is False
+    assert client.input_policy == "local_hf_token_ids_v1"
+
+
+def test_index_rejects_different_query_tokenization_policy(tmp_path):
+    from research_agent.core.corpus.dense import DenseCorpus, build_index
+    first = ToyEncoder()
+    first.input_policy = "local_hf_token_ids_v1"
+    build_index(toy_corpus(), tmp_path, first, corpus_sha256="source")
+    other = ToyEncoder()
+    other.input_policy = "server_text_v1"
+    with pytest.raises(ValueError, match="tokenization"):
+        DenseCorpus(toy_corpus(), tmp_path, other, "dense", corpus_sha256="source")

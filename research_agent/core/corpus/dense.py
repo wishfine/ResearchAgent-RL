@@ -39,11 +39,15 @@ def save_json(path, value):
 
 
 class EmbeddingClient:
-    def __init__(self, url, model, query_instruction="", event_log=None, fingerprint=None):
+    def __init__(self, url, model, query_instruction="", event_log=None, fingerprint=None, tokenizer=None):
         self.url = url.rstrip("/")
         self.model, self.query_instruction = model, query_instruction
         self.event_log = Path(event_log) if event_log else None
         self.fingerprint = fingerprint
+        self.tokenizer = tokenizer
+        self.input_policy = ("local_hf_token_ids_v1" if tokenizer is not None or
+                             (fingerprint and fingerprint.get("pooling") in {"CLS", "LAST"})
+                             else "server_text_v1")
 
     def _event(self, event):
         if self.event_log:
@@ -80,8 +84,22 @@ class EmbeddingClient:
         self._event({"event": "start", "request": request_id, "items": len(texts),
                      "input_sha256": hashlib.sha256(json.dumps(texts, ensure_ascii=False).encode()).hexdigest()})
         try:
+            # The same text can yield different IDs in HF and the server's
+            # text preprocessing path. Use the fingerprinted local tokenizer
+            # for query strings just as the index builder does for documents.
+            if self.input_policy == "local_hf_token_ids_v1" and self.tokenizer is None:
+                from transformers import AutoTokenizer
+                self.tokenizer = AutoTokenizer.from_pretrained(self.fingerprint["root"], local_files_only=True)
+            if all(isinstance(text, str) for text in texts):
+                inputs = [self.tokenizer.encode(text, add_special_tokens=True) for text in texts] if self.tokenizer is not None else texts
+            elif all(isinstance(text, list) and text and all(type(token) is int for token in text) for text in texts):
+                inputs = texts  # Index windows already include their special tokens.
+            else:
+                raise ValueError("Embedding input must be homogeneous strings or token-ID lists")
+            add_special_tokens = all(isinstance(text, str) for text in inputs)
             request = urllib.request.Request(self.url + "/embeddings", data=json.dumps({
-                "model": self.model, "input": texts, "encoding_format": "float"}).encode(),
+                "model": self.model, "input": inputs, "encoding_format": "float",
+                "add_special_tokens": add_special_tokens}).encode(),
                 headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(request, timeout=120) as response:
                 raw = json.load(response)
@@ -96,7 +114,10 @@ class EmbeddingClient:
                 raise ValueError("Embedding has zero norm")
             matrix /= norm
             self._event({"event": "success", "request": request_id, "dimension": matrix.shape[1],
-                         "usage": raw.get("usage"), "latency_sec": time.monotonic() - started})
+                         "usage": raw.get("usage"), "latency_sec": time.monotonic() - started,
+                         "input_policy": self.input_policy,
+                         "payload_input_sha256": hashlib.sha256(json.dumps(inputs, ensure_ascii=False).encode()).hexdigest(),
+                         "add_special_tokens": add_special_tokens})
             return matrix
         except Exception as exc:
             self._event({"event": "error", "request": request_id, "error": str(exc),
@@ -141,10 +162,11 @@ def _build_index(corpus, index_dir, encoder, *, corpus_sha256, batch_size=32,
     if not rows:
         raise ValueError("Empty corpus")
     rows_hash = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
-    spec = {"version": "dense-windows-v1", "corpus_sha256": corpus_sha256,
+    spec = {"version": "dense-windows-v2", "corpus_sha256": corpus_sha256,
             "encoder_model": encoder.model, "server": encoder.verify_server(),
             "encoder_fingerprint": getattr(encoder, "fingerprint", None),
             "query_instruction": encoder.query_instruction, "rows_sha256": rows_hash,
+            "input_policy": getattr(encoder, "input_policy", "encoder_defined_v1"),
             "window_policy": window_policy or {"mode": "single_input_no_truncation"},
             "rows": len(rows), "paragraphs": len({row["chunk_id"] for row in rows})}
     build_path = root / "build.json"
@@ -220,6 +242,8 @@ class DenseCorpus:
         manifest = json.loads((root / "manifest.json").read_text())
         if not manifest.get("complete") or manifest["corpus_sha256"] != corpus_sha256:
             raise ValueError("Incomplete or mismatched corpus index")
+        if manifest.get("input_policy") != getattr(encoder, "input_policy", "encoder_defined_v1"):
+            raise ValueError("Embedding query tokenization policy mismatch; use a new index directory")
         if (manifest["encoder_model"] != encoder.model or
             manifest["query_instruction"] != encoder.query_instruction or
             manifest["server"] != encoder.verify_server() or

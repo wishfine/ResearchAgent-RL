@@ -29,7 +29,7 @@ def main():
         result = model(**tokenizer(texts, padding=True, truncation=False, return_tensors="pt"))
         hidden = result.last_hidden_state[:, 0 if pooling == "CLS" else -1].float()
         reference = torch.nn.functional.normalize(hidden, dim=1).numpy()
-    client = EmbeddingClient(args.embedding_url, args.embedding_model)
+    client = EmbeddingClient(args.embedding_url, args.embedding_model, tokenizer=tokenizer)
     print("server:", client.verify_server())
     actual = client.encode(texts)
     assert actual.shape == reference.shape, (actual.shape, reference.shape)
@@ -38,6 +38,7 @@ def main():
     pretokenized = client.encode([tokenizer.encode(text, add_special_tokens=True) for text in texts])
     assert np.all((pretokenized * actual).sum(axis=1) > 0.999), "Pretokenized-window mismatch"
     print("dimension:", actual.shape[1])
+    print("input_policy:", client.input_policy)
     print("HF", pooling, "vs vLLM cosine:", agreement.tolist())
     print("Embedding backend: OK (not retrieval-quality evidence)")
 
