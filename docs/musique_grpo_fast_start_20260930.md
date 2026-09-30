@@ -212,3 +212,15 @@ tail -n 60 "$RUN_DIR/driver.log"
 修正仅针对诊断：sitecustomize注册限定两个模块名的延迟import observer，委托已有finder/loader完成自然导入后才包装初始化方法，不主动导入缺失模块；只有目标模块被加载的进程才开启fault文件。保留原import异常和spawn target。小型真实Python模块/subprocess测试覆盖不提前导入、自然导入后包装、spawn child traceback、晚安装和原import错误；这不是服务器Ray/GPU测试。远端须先重跑同一CPU开关对照，两侧均成功后再恢复2更新RL诊断，六卡和262144上限不变。
 
 注意：更新仓库后，旧run的`vime_runtime_site/sitecustomize.py`是启动时复制的旧文件，但本次修正的诊断helper由它从项目路径动态导入，因此该CPU对照可复用旧runtime-env。不要在当前`base` shell直接执行环境的`bin/ray`进行对照；先用指定`bin/python`确认Ray导入，然后通过`python -c 'from ray.scripts.scripts import main; main()' job submit ...`调用CLI，避免入口脚本解释器/PATH差异。此前直接调用`bin/ray`的`ModuleNotFoundError`发生在提交端，不是有效Ray任务对照。
+
+### 延迟诊断远端验收与 init_worker-only 复现（18:26）
+
+35更新到`b9dcf5a`后，关闭诊断的`raysubmit_hZBKQfYUKpKTXN4k`于18:21:00 succeeded，开启诊断的`raysubmit_5yNuWPFdiD595Uyh`于18:21:21 succeeded，双方均打印`RA_CPU_JOB_ENTRYPOINT_OK`。这支持Supervisor诊断回归已消除，不代表原始RL通过。
+
+复用6401/8301集群的新run `vime_musique_grpo_lazyworkerdiag_20260930_182456`在18:24:58提交`raysubmit_nxPmt9571ANBTsrF`，GPU bundle映射为物理2–7，SFT874训练checkpoint加载成功；vLLM实际配置为BF16/TP2/262144/0.70。18:26:29再次TP worker失败，18:26:40 Job failed，未进行训练更新。两个子进程3418320/3418321均记录`START WorkerProc.__init__`和`START WorkerWrapperBase.init_worker`，没有DONE/FAIL；fault文件为空，环境为CUDA_VISIBLE_DEVICES=6,7、spawn、正确CUDA_HOME。当前证据定位到init_worker内部，但未证明底层退出机制。
+
+内核journal因权限不可读；可读dmesg仅显示历史OOM/Xid，没有本次时间/PID的记录，不能把历史GPU7 DBE或OOM当成这次根因，也不能据此完全排除系统终止。Ray记录的18:26:39 SIGKILL对象是训练actor3414553/3415507/3415504/3415506，发生在TP退出之后，是下游清理证据。
+
+下一步使用`scripts/probe_vllm_init_worker.py --run-dir <上述run>`：从driver.log仅提取原runtime-env和HF模型，复用当前Ray提交不申请Ray GPU资源的诊断job，再由独立子进程设置GPU6/7可见性，构建匹配核心参数的vLLM config，只调用单rank的WorkerWrapperBase.init_worker。不调用init_device/load_model、不训练、不创建/停止集群，不改checkpoint。GPU6/7有计算进程则拒绝提交。导入/构造器仍可能查询CUDA，不能把它称为纯CPU库加载；这也不是原六卡进程拓扑的完整重放。输出目录位于原run的`init_worker_probe_<timestamp>/`，包含probe.log与worker_debug；原训练输出和latest指针不变。
+
+该probe打印worker_base/gpu_worker的执行行和`PROBE_CHILD_EXIT_CODE`，区分completed、early_exit（包括os._exit(0)而无完成标记）、signal和诊断timeout；默认子进程60秒上限，timeout造成的kill明确标记，不误称原生OOM/SIGKILL。小型Python模块夹具/实际子进程退出测试在本机验证，但服务器实际probe仍待运行。只有`INIT_WORKER_ONLY_OK`且退出0才算此初始化片段完成，不能将其当作RL成功。
