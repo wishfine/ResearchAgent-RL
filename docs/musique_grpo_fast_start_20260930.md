@@ -184,3 +184,21 @@ echo "RUN_DIR=$RUN_DIR"
 ```
 
 这组三端口被占用时会失败并打印具体端口，不继续叠加集群。只有出现实际train step、训练后的disk reload与job succeeded才算RL smoke通过，不跳到200步。
+
+### 第三次实际结果与独立worker诊断
+
+`vime_musique_grpo_smoke2_agentport_20260930_173045`已通过新Agent检查，17:31:43任务`raysubmit_zc57ej2esHmDryXP`提交成功。SFT训练checkpoint加载成功，但17:33:11仍在`WorkerProc.wait_for_ready`失败，17:33:22 job failed；未出现实际训练更新。说明Agent端口冲突已解决，而原始worker启动问题尚未解决。DEBUG日志中只有worker的平台/plugin导入信息，仍缺少原始worker traceback，不能凭此声称模型、NCCL或context有问题。
+
+新增诊断开关`VIME_VLLM_WORKER_DIAG=1`：复用当前run临时sitecustomize，在各进程内记录`WorkerProc.__init__`与`WorkerWrapperBase.init_worker`的阶段、CUDA_VISIBLE_DEVICES等白名单环境值及完整异常。文件放在当前run的`vllm_worker_debug/worker_<pid>.log`；native fault写到`worker_<pid>_fault.log`。只包装初始化方法，不包装multiprocessing target；保持原参数、返回值及异常，日志I/O失败不替换原始异常。默认关闭；它会改变import顺序/时序，因此开启诊断后若启动成功，仍需关闭后复核，不能将诊断钩子宣称为根因修复。SIGKILL不会留下Python/native traceback。
+
+下一诊断run采用新空闲端口`RAY_PORT=6401 RAY_DASHBOARD_PORT=8301 RAY_DASHBOARD_AGENT_PORT=52367`、短目录`RAY_TMPDIR=/local_data/$USER/r4`，仍只做2更新并设置`VIME_VLLM_WORKER_DIAG=1`。检查方式：
+
+```bash
+BASE="/local_data/$USER/research-agent-rl-data"
+RUN_DIR="$(cat "$BASE/latest_musique_grpo.txt")"
+find "$RUN_DIR/vllm_worker_debug" -maxdepth 1 -type f -name 'worker_*.log' \
+  -print -exec tail -n 160 {} \;
+tail -n 60 "$RUN_DIR/driver.log"
+```
+
+另一个待核对的配置偏差：第三次Megatron参数dump的`accumulate_allreduce_grads_in_fp32=True`，虽然shell打印关闭FP32累加且未传开启flag；框架可能将BF16默认强制成FP32。此问题需要单独核对源码，不能直接把它归因于尚未载入权重的vLLM worker退出，也不与本次诊断一起偷偷更改。

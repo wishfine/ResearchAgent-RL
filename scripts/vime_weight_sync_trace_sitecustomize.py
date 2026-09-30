@@ -1,9 +1,8 @@
 """Optional startup hook for tracing Vime's outgoing weight-update metadata.
 
-The smoke launcher copies this file to ``sitecustomize.py`` only when
-``VIME_WEIGHT_SYNC_TRACE=1``.  Python imports that special module before the
-Ray workers load Vime, allowing us to observe the trainer-to-vLLM boundary
-without editing the separately managed Vime checkout.
+The smoke launcher copies this file to ``sitecustomize.py`` for disk reload,
+weight-sync tracing, or opt-in worker diagnostics. Python imports that module
+before Ray workers load Vime, without editing the separately managed checkout.
 """
 
 from __future__ import annotations
@@ -151,6 +150,12 @@ def _install_disk_reload_compat() -> None:
         flush=True,
     )
 
+
+# Enable diagnostics before trainer-side imports so native faults there are
+# captured too. Disabled by default, with no vLLM imports added to old runs.
+if os.environ.get("VIME_VLLM_WORKER_DIAG") == "1":
+    from scripts.vime_vllm_worker_diag import install
+    install()
 
 if os.environ.get("VIME_WEIGHT_SYNC_TRACE") == "1":
     _install()

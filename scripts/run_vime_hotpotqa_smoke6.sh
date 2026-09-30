@@ -68,6 +68,8 @@ VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-INFO}"
 # Trace the names crossing the trainer-to-vLLM NCCL boundary. This is opt-in
 # and uses a temporary sitecustomize module, so it never edits Vime's source.
 VIME_WEIGHT_SYNC_TRACE="${VIME_WEIGHT_SYNC_TRACE:-0}"
+VIME_VLLM_WORKER_DIAG="${VIME_VLLM_WORKER_DIAG:-0}"
+VIME_VLLM_WORKER_DIAG_DIR="${VIME_VLLM_WORKER_DIAG_DIR:-$RUN_DIR/vllm_worker_debug}"
 # Diagnostic-only alternate name convention.  The raw Vime converter emits
 # canonical HF names; this can test vLLM-native names without changing tensors.
 VIME_WEIGHT_SYNC_NAME_MODE="${VIME_WEIGHT_SYNC_NAME_MODE:-hf}"
@@ -149,6 +151,7 @@ fi
 [[ "$VLLM_LOGGING_LEVEL" =~ ^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$ ]] || \
   fail "VLLM_LOGGING_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, or CRITICAL"
 [[ "$VIME_WEIGHT_SYNC_TRACE" =~ ^[01]$ ]] || fail "VIME_WEIGHT_SYNC_TRACE must be 0 or 1"
+[[ "$VIME_VLLM_WORKER_DIAG" =~ ^[01]$ ]] || fail "VIME_VLLM_WORKER_DIAG must be 0 or 1"
 [[ "$VIME_WEIGHT_SYNC_NAME_MODE" == "hf" || "$VIME_WEIGHT_SYNC_NAME_MODE" == "vllm_native" ]] || \
   fail "VIME_WEIGHT_SYNC_NAME_MODE must be hf or vllm_native"
 [[ "$VIME_WEIGHT_SYNC_NAME_MODE" == "hf" || "$VIME_WEIGHT_SYNC_TRACE" == "1" ]] || \
@@ -211,6 +214,7 @@ export RESEARCH_AGENT_NO_ANSWER_PENALTY="${RESEARCH_AGENT_NO_ANSWER_PENALTY:-0.2
 export RESEARCH_AGENT_STEP_PENALTY="${RESEARCH_AGENT_STEP_PENALTY:-0.01}"
 export VLLM_LOGGING_LEVEL
 export VIME_WEIGHT_SYNC_TRACE VIME_WEIGHT_SYNC_NAME_MODE
+export VIME_VLLM_WORKER_DIAG VIME_VLLM_WORKER_DIAG_DIR
 export VIME_DISK_WEIGHT_SYNC_COMPAT="${VIME_DISK_WEIGHT_SYNC_COMPAT:-1}"
 export VIME_DISK_WEIGHT_SYNC_KEEP_LAST
 
@@ -225,7 +229,7 @@ RUNTIME_PYTHONPATH="$PYTHONPATH"
 # the older signature, which accepts only ``model_path``.  Load a startup hook
 # for disk runs to bridge that one-argument API difference.  The same hook also
 # carries the optional NCCL name tracer, so both diagnostics can coexist.
-if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" || "$UPDATE_WEIGHT_TRANSPORT" == "disk" ]]; then
+if [[ "$VIME_WEIGHT_SYNC_TRACE" == "1" || "$UPDATE_WEIGHT_TRANSPORT" == "disk" || "$VIME_VLLM_WORKER_DIAG" == "1" ]]; then
   RUNTIME_SITE_DIR="$RUN_DIR/vime_runtime_site"
   mkdir -p "$RUNTIME_SITE_DIR"
   cp "$PROJECT_ROOT/scripts/vime_weight_sync_trace_sitecustomize.py" "$RUNTIME_SITE_DIR/sitecustomize.py"
@@ -336,6 +340,8 @@ print(json.dumps({"env_vars": {
     "RESEARCH_AGENT_STEP_PENALTY": os.environ["RESEARCH_AGENT_STEP_PENALTY"],
     "VLLM_LOGGING_LEVEL": os.environ["VLLM_LOGGING_LEVEL"],
     "VIME_WEIGHT_SYNC_TRACE": os.environ["VIME_WEIGHT_SYNC_TRACE"],
+    "VIME_VLLM_WORKER_DIAG": os.environ["VIME_VLLM_WORKER_DIAG"],
+    "VIME_VLLM_WORKER_DIAG_DIR": os.environ["VIME_VLLM_WORKER_DIAG_DIR"],
     "VIME_WEIGHT_SYNC_NAME_MODE": os.environ["VIME_WEIGHT_SYNC_NAME_MODE"],
     "VIME_DISK_WEIGHT_SYNC_COMPAT": os.environ["VIME_DISK_WEIGHT_SYNC_COMPAT"],
     "VIME_DISK_WEIGHT_SYNC_KEEP_LAST": os.environ["VIME_DISK_WEIGHT_SYNC_KEEP_LAST"],
