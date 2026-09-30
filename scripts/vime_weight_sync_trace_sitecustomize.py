@@ -151,8 +151,8 @@ def _install_disk_reload_compat() -> None:
     )
 
 
-# Enable diagnostics before trainer-side imports so native faults there are
-# captured too. Disabled by default, with no vLLM imports added to old runs.
+# Register lazy diagnostics before trainer imports. Do not import vLLM in every
+# Python process: Ray's CPU-only JobSupervisor must not initialize that stack.
 if os.environ.get("VIME_VLLM_WORKER_DIAG") == "1":
     from scripts.vime_vllm_worker_diag import install
     install()

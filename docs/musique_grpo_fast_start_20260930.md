@@ -189,7 +189,7 @@ echo "RUN_DIR=$RUN_DIR"
 
 `vime_musique_grpo_smoke2_agentport_20260930_173045`已通过新Agent检查，17:31:43任务`raysubmit_zc57ej2esHmDryXP`提交成功。SFT训练checkpoint加载成功，但17:33:11仍在`WorkerProc.wait_for_ready`失败，17:33:22 job failed；未出现实际训练更新。说明Agent端口冲突已解决，而原始worker启动问题尚未解决。DEBUG日志中只有worker的平台/plugin导入信息，仍缺少原始worker traceback，不能凭此声称模型、NCCL或context有问题。
 
-新增诊断开关`VIME_VLLM_WORKER_DIAG=1`：复用当前run临时sitecustomize，在各进程内记录`WorkerProc.__init__`与`WorkerWrapperBase.init_worker`的阶段、CUDA_VISIBLE_DEVICES等白名单环境值及完整异常。文件放在当前run的`vllm_worker_debug/worker_<pid>.log`；native fault写到`worker_<pid>_fault.log`。只包装初始化方法，不包装multiprocessing target；保持原参数、返回值及异常，日志I/O失败不替换原始异常。默认关闭；它会改变import顺序/时序，因此开启诊断后若启动成功，仍需关闭后复核，不能将诊断钩子宣称为根因修复。SIGKILL不会留下Python/native traceback。
+新增诊断开关`VIME_VLLM_WORKER_DIAG=1`：复用当前run临时sitecustomize，记录`WorkerProc.__init__`与`WorkerWrapperBase.init_worker`的阶段、CUDA_VISIBLE_DEVICES等白名单环境值及完整异常。文件放在当前run的`vllm_worker_debug/worker_<pid>.log`；自然加载目标模块时才启用native fault文件`worker_<pid>_fault.log`。只包装初始化方法，不包装multiprocessing target；保持原参数、返回值及异常，日志I/O失败不替换原始异常。默认关闭；修正版只观察自然导入，不在Python启动时主动加载vLLM。诊断仍有包装/日志开销，开启后若启动成功，仍需关闭后复核，不能将诊断钩子宣称为原始RL根因修复。SIGKILL不会留下Python/native traceback。
 
 下一诊断run采用新空闲端口`RAY_PORT=6401 RAY_DASHBOARD_PORT=8301 RAY_DASHBOARD_AGENT_PORT=52367`、短目录`RAY_TMPDIR=/local_data/$USER/r4`，仍只做2更新并设置`VIME_VLLM_WORKER_DIAG=1`。检查方式：
 
@@ -202,3 +202,13 @@ tail -n 60 "$RUN_DIR/driver.log"
 ```
 
 另一个待核对的配置偏差：第三次Megatron参数dump的`accumulate_allreduce_grads_in_fp32=True`，虽然shell打印关闭FP32累加且未传开启flag；框架可能将BF16默认强制成FP32。此问题需要单独核对源码，不能直接把它归因于尚未载入权重的vLLM worker退出，也不与本次诊断一起偷偷更改。
+
+### 诊断钩子自身的回归与延迟安装修正（18:11）
+
+第四次run `vime_musique_grpo_workerdiag_20260930_175222`使用6401/8301/52367，任务17:53:21提交成功，但17:53:33 JobSupervisor PID3321073死亡，训练入口未执行。诊断文件仅有安装完成，fault文件为空，不能从Ray通用提示认定OOM或SIGSEGV。
+
+复用同一Ray集群、原runtime-env，仅改变`VIME_VLLM_WORKER_DIAG`的CPU打印任务对照：关闭诊断的`raysubmit_z4gZM2cezGH1qQsf`在18:10:48 succeeded并打印`RA_CPU_JOB_ENTRYPOINT_OK`；开启诊断的`raysubmit_QVnQZzGWPGXePeqk`在18:11:01因Supervisor PID3371187死亡而失败，入口未执行。对照支持新增诊断导致该启动回归；尚未确定底层退出机制，也未解决此前的vLLM TP worker启动故障。
+
+修正仅针对诊断：sitecustomize注册限定两个模块名的延迟import observer，委托已有finder/loader完成自然导入后才包装初始化方法，不主动导入缺失模块；只有目标模块被加载的进程才开启fault文件。保留原import异常和spawn target。小型真实Python模块/subprocess测试覆盖不提前导入、自然导入后包装、spawn child traceback、晚安装和原import错误；这不是服务器Ray/GPU测试。远端须先重跑同一CPU开关对照，两侧均成功后再恢复2更新RL诊断，六卡和262144上限不变。
+
+注意：更新仓库后，旧run的`vime_runtime_site/sitecustomize.py`是启动时复制的旧文件，但本次修正的诊断helper由它从项目路径动态导入，因此该CPU对照可复用旧runtime-env。不要在当前`base` shell直接执行环境的`bin/ray`进行对照；先用指定`bin/python`确认Ray导入，然后通过`python -c 'from ray.scripts.scripts import main; main()' job submit ...`调用CLI，避免入口脚本解释器/PATH差异。此前直接调用`bin/ray`的`ModuleNotFoundError`发生在提交端，不是有效Ray任务对照。
